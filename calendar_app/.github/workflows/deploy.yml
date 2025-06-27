@@ -1,0 +1,39 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.3'
+        channel: 'stable'
+    
+    - name: Get dependencies
+      working-directory: ./calendar_app
+      run: flutter pub get
+    
+    - name: Enable web support
+      working-directory: ./calendar_app
+      run: flutter config --enable-web
+    
+    - name: Build web
+      working-directory: ./calendar_app
+      run: flutter build web --release --web-renderer html --base-href /CalendarApp/
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      if: github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./calendar_app/build/web 
