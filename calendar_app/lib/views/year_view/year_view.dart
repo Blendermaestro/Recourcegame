@@ -267,16 +267,17 @@ class _YearViewState extends State<YearView> {
     return List.generate(7, (index) => tuesdayStart.add(Duration(days: index)));
   }
 
+  // 🔥 EXACT SAME CATEGORY COLORS AS WEEK VIEW!
   Color _getCategoryColor(EmployeeCategory category) {
     switch (category) {
       case EmployeeCategory.ab:
-        return Colors.green[400]!; // Light green
+        return const Color(0xFFE0FBFC); // Light cyan
       case EmployeeCategory.cd:
-        return Colors.blue[400]!; // Light blue
+        return const Color(0xFFC2DFE3); // Light blue
       case EmployeeCategory.huolto:
-        return Colors.orange[400]!; // Light orange
+        return const Color(0xFF9DB4C0); // Cadet gray
       case EmployeeCategory.sijainen:
-        return Colors.yellow[400]!; // Light yellow
+        return const Color(0xFF5C6B73); // Payne's gray
     }
   }
 
@@ -284,9 +285,10 @@ class _YearViewState extends State<YearView> {
     switch (category) {
       case EmployeeCategory.ab:
       case EmployeeCategory.cd:
+        return const Color(0xFF253237); // Dark text on light backgrounds
       case EmployeeCategory.huolto:
       case EmployeeCategory.sijainen:
-        return Colors.black87;
+        return Colors.white; // White text on darker backgrounds
     }
   }
 
@@ -676,31 +678,6 @@ class _YearViewState extends State<YearView> {
         ),
       ),
     );
-  }
-
-  // 🔥 EXACT SAME CATEGORY COLORS AS WEEK VIEW!
-  Color _getCategoryColor(EmployeeCategory category) {
-    switch (category) {
-      case EmployeeCategory.ab:
-        return const Color(0xFFE0FBFC); // Light cyan
-      case EmployeeCategory.cd:
-        return const Color(0xFFC2DFE3); // Light blue
-      case EmployeeCategory.huolto:
-        return const Color(0xFF9DB4C0); // Cadet gray
-      case EmployeeCategory.sijainen:
-        return const Color(0xFF5C6B73); // Payne's gray
-    }
-  }
-
-  Color _getTextColorForCategory(EmployeeCategory category) {
-    switch (category) {
-      case EmployeeCategory.ab:
-      case EmployeeCategory.cd:
-        return const Color(0xFF253237); // Dark text on light backgrounds
-      case EmployeeCategory.huolto:
-      case EmployeeCategory.sijainen:
-        return Colors.white; // White text on darker backgrounds
-    }
   }
 
   @override
