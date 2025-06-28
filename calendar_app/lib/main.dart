@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:calendar_app/views/week_view/week_view.dart';
-import 'package:calendar_app/views/employee_settings/employee_settings_view.dart';
 import 'package:calendar_app/views/auth/auth_view.dart';
 import 'package:calendar_app/services/auth_service.dart';
-import 'package:supabase_flutter/supabase_config.dart';
-import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/supabase_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
