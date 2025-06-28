@@ -12,16 +12,16 @@ import 'package:flutter/foundation.dart';
 class DragState {
   final double startX;
   final double currentX;
+  final bool isLeftResize;
   final int originalStartDay;
   final int originalDuration;
-  final bool isLeftResize;
   
   DragState({
     required this.startX,
     required this.currentX,
+    required this.isLeftResize,
     required this.originalStartDay,
     required this.originalDuration,
-    required this.isLeftResize,
   });
 }
 
@@ -563,127 +563,164 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _toggleResizeMode(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    // Create unique block key for this specific continuous block
     final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
-    
     setState(() {
-      if (_resizeModeBlockKey == blockKey) {
-        _resizeModeBlockKey = null; // Turn off resize mode
-      } else {
-        _resizeModeBlockKey = blockKey; // Turn on resize mode for this specific block
-      }
+      _resizeModeBlockKey = _resizeModeBlockKey == blockKey ? null : blockKey;
     });
   }
 
   void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    if (_resizeModeBlockKey == null) return;
+    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
     
-    // Calculate visual position for smooth dragging
+    // Get current employee span for originalStartDay and originalDuration
+    final currentKeys = _assignments.entries
+        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
+        .map((e) => e.key)
+        .toList();
+    
+    currentKeys.sort((a, b) {
+      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
+      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+      return dayA.compareTo(dayB);
+    });
+    
+    final originalStartDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.first.split('-')[2]) ?? 0 : 0;
+    final originalEndDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.last.split('-')[2]) ?? 0 : 0;
+    final originalDuration = originalEndDay - originalStartDay + 1;
+    
+    // Set the drag state for visual feedback
+    setState(() {
+      _dragStates ??= {};
+      _dragStates![blockKey] = DragState(
+        startX: details.globalPosition.dx,
+        currentX: details.globalPosition.dx,
+        isLeftResize: true,
+        originalStartDay: originalStartDay,
+        originalDuration: originalDuration,
+      );
+    });
+    
+    // Calculate new resize position
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox != null) {
       final localPosition = renderBox.globalToLocal(details.globalPosition);
+      final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7;
+      final gridLeft = 32; // Profession column width
+      final relativeX = localPosition.dx - gridLeft;
+      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
       
-      // Get or create drag state
-      _dragStates ??= {};
-      final blockKey = _resizeModeBlockKey!;
-      
-      if (!_dragStates!.containsKey(blockKey)) {
-        // Initialize drag state on first drag
-        final keyParts = blockKey.split('-');
-        final blockStartDay = int.tryParse(keyParts[3]) ?? 0;
-        final blockLane = int.tryParse(keyParts[2]) ?? 0;
-        
-        // Find original duration
-        int originalDuration = 1;
-        for (int day = blockStartDay; day < 7; day++) {
-          final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific key
-          if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-            originalDuration = day - blockStartDay + 1;
-          } else {
-            break;
-          }
-        }
-        
-        _dragStates![blockKey] = DragState(
-          startX: localPosition.dx,
-          currentX: localPosition.dx,
-          originalStartDay: blockStartDay,
-          originalDuration: originalDuration,
-          isLeftResize: true,
-        );
-      } else {
-        // Update current position
-        final current = _dragStates![blockKey]!;
-        _dragStates![blockKey] = DragState(
-          startX: current.startX,
-          currentX: localPosition.dx,
-          originalStartDay: current.originalStartDay,
-          originalDuration: current.originalDuration,
-          isLeftResize: true,
-        );
-      }
-      
-      // Immediate visual update
-      setState(() {});
+      _performResize(employee, shiftTitle, targetDay, true);
     }
   }
-  
-
 
   void _handleRightResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    if (_resizeModeBlockKey == null) return;
+    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
     
-    // Calculate visual position for smooth dragging
+    // Get current employee span for originalStartDay and originalDuration
+    final currentKeys = _assignments.entries
+        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
+        .map((e) => e.key)
+        .toList();
+    
+    currentKeys.sort((a, b) {
+      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
+      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+      return dayA.compareTo(dayB);
+    });
+    
+    final originalStartDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.first.split('-')[2]) ?? 0 : 0;
+    final originalEndDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.last.split('-')[2]) ?? 0 : 0;
+    final originalDuration = originalEndDay - originalStartDay + 1;
+    
+    // Set the drag state for visual feedback
+    setState(() {
+      _dragStates ??= {};
+      _dragStates![blockKey] = DragState(
+        startX: details.globalPosition.dx,
+        currentX: details.globalPosition.dx,
+        isLeftResize: false,
+        originalStartDay: originalStartDay,
+        originalDuration: originalDuration,
+      );
+    });
+    
+    // Calculate new resize position
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox != null) {
       final localPosition = renderBox.globalToLocal(details.globalPosition);
+      final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7;
+      final gridLeft = 32; // Profession column width
+      final relativeX = localPosition.dx - gridLeft;
+      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
       
-      // Get or create drag state
-      _dragStates ??= {};
-      final blockKey = _resizeModeBlockKey!;
-      
-      if (!_dragStates!.containsKey(blockKey)) {
-        // Initialize drag state on first drag
-        final keyParts = blockKey.split('-');
-        final blockStartDay = int.tryParse(keyParts[3]) ?? 0;
-        final blockLane = int.tryParse(keyParts[2]) ?? 0;
-        
-        // Find original duration
-        int originalDuration = 1;
-        for (int day = blockStartDay; day < 7; day++) {
-          final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific key
-          if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-            originalDuration = day - blockStartDay + 1;
-          } else {
-            break;
-          }
-        }
-        
-        _dragStates![blockKey] = DragState(
-          startX: localPosition.dx,
-          currentX: localPosition.dx,
-          originalStartDay: blockStartDay,
-          originalDuration: originalDuration,
-          isLeftResize: false,
-        );
-      } else {
-        // Update current position
-        final current = _dragStates![blockKey]!;
-        _dragStates![blockKey] = DragState(
-          startX: current.startX,
-          currentX: localPosition.dx,
-          originalStartDay: current.originalStartDay,
-          originalDuration: current.originalDuration,
-          isLeftResize: false,
-        );
-      }
-      
-      // Immediate visual update
-      setState(() {});
+      _performResize(employee, shiftTitle, targetDay, false);
     }
   }
-  
 
+
+
+  void _performResize(Employee employee, String shiftTitle, int targetDay, bool isLeftResize) {
+    // Find current employee assignments for this shift
+    final currentKeys = _assignments.entries
+        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
+        .map((e) => e.key)
+        .toList();
+    
+    if (currentKeys.isEmpty) return;
+    
+    // Sort to get the span
+    currentKeys.sort((a, b) {
+      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
+      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+      return dayA.compareTo(dayB);
+    });
+    
+    final firstKey = currentKeys.first;
+    final lastKey = currentKeys.last;
+    final currentStartDay = int.tryParse(firstKey.split('-')[2]) ?? 0;
+    final currentEndDay = int.tryParse(lastKey.split('-')[2]) ?? 0;
+    final lane = int.tryParse(firstKey.split('-')[3]) ?? 0;
+    
+    int newStartDay, newEndDay;
+    
+    if (isLeftResize) {
+      // Resizing from left - change start day
+      newStartDay = targetDay.clamp(0, currentEndDay);
+      newEndDay = currentEndDay;
+    } else {
+      // Resizing from right - change end day
+      newStartDay = currentStartDay;
+      newEndDay = targetDay.clamp(currentStartDay, 6);
+    }
+    
+    // Only update if there's an actual change
+    if (newStartDay != currentStartDay || newEndDay != currentEndDay) {
+      final newDuration = newEndDay - newStartDay + 1;
+      _handleResize(employee, shiftTitle, newStartDay, newDuration, lane);
+    }
+  }
+
+  int _getEmployeeLane(Employee employee, String shiftTitle) {
+    final entry = _assignments.entries
+        .firstWhere((e) => e.key.startsWith('${widget.weekNumber}-$shiftTitle') && e.value.id == employee.id,
+                   orElse: () => MapEntry('0-0-0-0', Employee(id: '', name: '', category: EmployeeCategory.ab, type: EmployeeType.vakityontekija, role: EmployeeRole.varu1, shiftCycle: ShiftCycle.none)));
+    return int.tryParse(entry.key.split('-')[3]) ?? 0;
+  }
+
+  int _getEmployeeStartDay(Employee employee, String shiftTitle) {
+    final entries = _assignments.entries
+        .where((e) => e.key.startsWith('${widget.weekNumber}-$shiftTitle') && e.value.id == employee.id)
+        .toList();
+    if (entries.isEmpty) return 0;
+    
+    entries.sort((a, b) {
+      final dayA = int.tryParse(a.key.split('-')[2]) ?? 0;
+      final dayB = int.tryParse(b.key.split('-')[2]) ?? 0;
+      return dayA.compareTo(dayB);
+    });
+    
+    return int.tryParse(entries.first.key.split('-')[2]) ?? 0;
+  }
 
   void _updateResizeAssignments(Employee employee, String shiftTitle, int startDay, int duration, int lane) {
     // Update assignments directly without setState to avoid rebuilds during drag
@@ -755,7 +792,7 @@ class _WeekViewState extends State<WeekView> {
         final handleRightEdge = dragState.currentX + 12; // 12px = half width of 24px handle
         final relativeX = handleRightEdge - gridLeft;
         final targetDay = (relativeX / dayWidth).round().clamp(0, 6);
-        final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay);
+        final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay).toInt();
         
         if (newDuration > 0) {
           _updateResizeAssignments(employee, shiftTitle, dragState.originalStartDay, newDuration, blockLane);
@@ -1570,67 +1607,105 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildAssignmentBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
+    final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
+    final isInResizeMode = _resizeModeBlockKey == blockKey;
+    
     return RepaintBoundary(
-      key: ValueKey('${employee.id}-$shiftTitle-$blockStartDay-$blockLane'),
-      child: Draggable<Employee>(
-        data: employee,
-        onDragStarted: () {
-          _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+      key: ValueKey(blockKey),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          if (!isInResizeMode) {
+            _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+          }
         },
-        feedback: Material(
-          child: Container(
-            width: 80,
-            height: 18,
-            decoration: BoxDecoration(
-              color: Colors.grey[600]?.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.grey[400]!, width: 1),
-            ),
-            child: Center(
-              child: Text(
-                employee.name,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        ),
-        childWhenDragging: Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[400],
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
+        onTap: () {
+          if (isInResizeMode) {
+            _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+          } else {
+            _showAssignmentMenu(context, employee, shiftTitle);
+          }
+        },
+        child: isInResizeMode 
+          ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
+          : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
+      ),
+    );
+  }
+
+  Widget _buildDraggableBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
+    return Draggable<Employee>(
+      data: employee,
+      onDragStarted: () {
+        _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+      },
+      feedback: Material(
         child: Container(
-          margin: const EdgeInsets.all(0.5),
+          width: 80,
+          height: 18,
           decoration: BoxDecoration(
-            color: _getCategoryColor(employee.category),
+            color: Colors.grey[600]?.withOpacity(0.8),
             borderRadius: BorderRadius.circular(4),
             border: Border.all(color: Colors.grey[400]!, width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 2,
-                offset: const Offset(1, 1),
-              ),
-            ],
           ),
           child: Center(
             child: Text(
               employee.name,
-              style: TextStyle(
-                fontSize: 11,
-                color: _getTextColorForCategory(employee.category),
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
+        ),
+      ),
+      childWhenDragging: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[400],
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+      child: _buildBlockContainer(employee),
+    );
+  }
+
+  Widget _buildResizeModeBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _buildBlockContainer(employee),
+        ..._buildResizeHandles(employee, shiftTitle, blockStartDay, blockLane),
+      ],
+    );
+  }
+
+  Widget _buildBlockContainer(Employee employee) {
+    return Container(
+      margin: const EdgeInsets.all(0.5),
+      decoration: BoxDecoration(
+        color: _getCategoryColor(employee.category),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.grey[400]!, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 2,
+            offset: const Offset(1, 1),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          employee.name,
+          style: TextStyle(
+            fontSize: 11,
+            color: _getTextColorForCategory(employee.category),
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -2153,5 +2228,132 @@ class _WeekViewState extends State<WeekView> {
         ),
       );
     }).toList();
+  }
+
+  List<Widget> _buildResizeHandles(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
+    final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
+    
+    // Find the span of this block
+    final thisBlockKeys = <String>[];
+    for (int day = blockStartDay; day < 7; day++) {
+      final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane';
+      if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
+        thisBlockKeys.add(key);
+      } else {
+        break;
+      }
+    }
+    
+    if (thisBlockKeys.isEmpty) return [];
+    
+    final dayIndices = thisBlockKeys
+        .map((key) => int.tryParse(key.split('-')[2]) ?? 0)
+        .toList()..sort();
+    
+    final startIndex = dayIndices.first;
+    final endIndex = dayIndices.last;
+    final blockWidth = endIndex - startIndex + 1;
+    
+    final canResizeLeft = blockWidth > 1 || startIndex > 0;
+    final canResizeRight = blockWidth > 1 || endIndex < 6;
+    
+    final handles = <Widget>[];
+    
+    // Check if we're currently resizing
+    final dragState = _dragStates?[blockKey];
+    final isLeftActive = dragState?.isLeftResize == true;
+    final isRightActive = dragState?.isLeftResize == false;
+    
+    if (canResizeLeft) {
+      handles.add(
+        Positioned(
+          left: -2.0,
+          top: -4.0,
+          bottom: -4.0,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanUpdate: (details) => _handleLeftResize(details, employee, shiftTitle),
+            onPanEnd: (details) => _handleResizeEnd(),
+            child: Container(
+              width: 24,
+              decoration: BoxDecoration(
+                color: isLeftActive 
+                    ? Colors.green[600]  
+                    : (dragState != null ? Colors.grey[400] : Colors.blue[800]),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(6),
+                  bottomLeft: Radius.circular(6),
+                ),
+                border: Border.all(
+                  color: isLeftActive ? Colors.white : Colors.grey[300]!, 
+                  width: isLeftActive ? 3 : 2
+                ),
+                boxShadow: isLeftActive ? [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ] : null,
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.keyboard_double_arrow_left, 
+                  size: isLeftActive ? 18 : 16, 
+                  color: isLeftActive ? Colors.white : (dragState != null ? Colors.grey[600] : Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    if (canResizeRight) {
+      handles.add(
+        Positioned(
+          right: -2.0,
+          top: -4.0,
+          bottom: -4.0,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanUpdate: (details) => _handleRightResize(details, employee, shiftTitle),
+            onPanEnd: (details) => _handleResizeEnd(),
+            child: Container(
+              width: 24,
+              decoration: BoxDecoration(
+                color: isRightActive 
+                    ? Colors.green[600]  
+                    : (dragState != null ? Colors.grey[400] : Colors.blue[800]),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(6),
+                  bottomRight: Radius.circular(6),
+                ),
+                border: Border.all(
+                  color: isRightActive ? Colors.white : Colors.grey[300]!, 
+                  width: isRightActive ? 3 : 2
+                ),
+                boxShadow: isRightActive ? [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ] : null,
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.keyboard_double_arrow_right, 
+                  size: isRightActive ? 18 : 16, 
+                  color: isRightActive ? Colors.white : (dragState != null ? Colors.grey[600] : Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    return handles;
   }
 } 
