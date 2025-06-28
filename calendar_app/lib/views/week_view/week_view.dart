@@ -176,7 +176,7 @@ class _WeekViewState extends State<WeekView> {
       // CHECK IF THE ENTIRE LANE IS EMPTY FIRST
       bool isLaneCompletelyEmpty = true;
       for (int day = 0; day < 7; day++) {
-        final checkKey = '$shiftTitle-$day-$lane';
+        final checkKey = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
         if (_assignments.containsKey(checkKey)) {
           isLaneCompletelyEmpty = false;
           break;
@@ -190,11 +190,11 @@ class _WeekViewState extends State<WeekView> {
         
         // Add to ALL 7 days in this lane, keeping existing assignments elsewhere
         for (int day = 0; day < 7; day++) {
-          final key = '$shiftTitle-$day-$lane';
+          final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
           
-          // Check if user already has ANY assignment on this day
+          // Check if user already has ANY assignment on this day IN THIS WEEK
           final hasExistingAssignment = _assignments.keys
-              .any((k) => k.contains('-$day-') && _assignments[k]?.id == employee.id);
+              .any((k) => k.startsWith('${widget.weekNumber}-') && k.contains('-$day-') && _assignments[k]?.id == employee.id);
           
           // Only add if user has NO assignment on this day
           if (!hasExistingAssignment) {
@@ -202,17 +202,14 @@ class _WeekViewState extends State<WeekView> {
           }
         }
       } else {
-        // LANE HAS SOME ASSIGNMENTS - FILL ONLY EMPTY DAYS
-        final shiftTitles = _getShiftTitlesForWeek(widget.weekNumber);
-        final otherShift = shiftTitle == shiftTitles[0] ? shiftTitles[1] : shiftTitles[0];
-        
-        // Check each day and fill only empty ones
+        // LANE HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS
         for (int day = 0; day < 7; day++) {
-          final key = '$shiftTitle-$day-$lane';
+          final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
+          
           if (!_assignments.containsKey(key)) {
-            // Check if user already has ANY assignment on this day
+            // Check if user already has ANY assignment on this day IN THIS WEEK
             final hasExistingAssignment = _assignments.keys
-                .any((k) => k.contains('-$day-') && _assignments[k]?.id == employee.id);
+                .any((k) => k.startsWith('${widget.weekNumber}-') && k.contains('-$day-') && _assignments[k]?.id == employee.id);
             
             // Only add if user has NO assignment on this day
             if (!hasExistingAssignment) {
@@ -230,9 +227,9 @@ class _WeekViewState extends State<WeekView> {
       
       // FIRST: Find and remove ONLY the original block being resized (exact same lane)
       final originalKeys = _assignments.keys
-          .where((key) => key.startsWith(shiftTitle) && 
+          .where((key) => key.startsWith('${widget.weekNumber}-$shiftTitle') && 
                          _assignments[key]?.id == employee.id &&
-                         key.split('-')[2] == lane.toString())
+                         key.split('-')[3] == lane.toString()) // Updated index for week-shift-day-lane
           .toList();
       
       // Remove the original block being resized
@@ -243,7 +240,7 @@ class _WeekViewState extends State<WeekView> {
       // SECOND: For resizing, remove overlapping assignments from other blocks 
       for (int day = startDay; day < startDay + duration && day < 7; day++) {
         final conflictingKeys = _assignments.keys
-            .where((key) => key.contains('-$day-') && _assignments[key]?.id == employee.id)
+            .where((key) => key.startsWith('${widget.weekNumber}-') && key.contains('-$day-') && _assignments[key]?.id == employee.id)
             .toList();
         
         for (final key in conflictingKeys) {
@@ -253,7 +250,7 @@ class _WeekViewState extends State<WeekView> {
       
       // THIRD: Add new resized block
       for (int day = startDay; day < startDay + duration && day < 7; day++) {
-        final key = '$shiftTitle-$day-$lane';
+        final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Week-specific
         _assignments[key] = employee;
       }
     });
@@ -267,7 +264,7 @@ class _WeekViewState extends State<WeekView> {
 
   void _removeEmployeeFromShift(Employee employee, String shiftTitle) {
     final keysToRemove = _assignments.keys
-        .where((key) => key.startsWith(shiftTitle) && _assignments[key]?.id == employee.id)
+        .where((key) => key.startsWith('${widget.weekNumber}-$shiftTitle') && _assignments[key]?.id == employee.id)
         .toList();
     
     for (final key in keysToRemove) {
@@ -280,7 +277,7 @@ class _WeekViewState extends State<WeekView> {
       // Find and remove only THIS specific continuous block
       final thisBlockKeys = <String>[];
       for (int day = blockStartDay; day < 7; day++) {
-        final key = '$shiftTitle-$day-$blockLane';
+        final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific
         if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
           thisBlockKeys.add(key);
         } else {
@@ -678,9 +675,9 @@ class _WeekViewState extends State<WeekView> {
     
     // FIRST: Find and remove ONLY the original block being resized (exact same lane)
     final originalKeys = _assignments.keys
-        .where((key) => key.startsWith(shiftTitle) && 
+        .where((key) => key.startsWith('${widget.weekNumber}-$shiftTitle') && 
                        _assignments[key]?.id == employee.id &&
-                       key.split('-')[2] == lane.toString())
+                       key.split('-')[3] == lane.toString()) // Updated index for week-shift-day-lane
         .toList();
     
     // Remove the original block being resized
@@ -691,7 +688,7 @@ class _WeekViewState extends State<WeekView> {
     // SECOND: For resizing, remove overlapping assignments from other blocks 
     for (int day = startDay; day < startDay + duration && day < 7; day++) {
       final conflictingKeys = _assignments.keys
-          .where((key) => key.contains('-$day-') && _assignments[key]?.id == employee.id)
+          .where((key) => key.startsWith('${widget.weekNumber}-') && key.contains('-$day-') && _assignments[key]?.id == employee.id)
           .toList();
       
       for (final key in conflictingKeys) {
@@ -701,7 +698,7 @@ class _WeekViewState extends State<WeekView> {
     
     // THIRD: Add new resized block
     for (int day = startDay; day < startDay + duration && day < 7; day++) {
-      final key = '$shiftTitle-$day-$lane';
+      final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Week-specific
       _assignments[key] = employee;
     }
   }
@@ -1045,7 +1042,7 @@ class _WeekViewState extends State<WeekView> {
   int _getEmployeeAllocation(Employee employee, String shiftTitle) {
     int count = 0;
     for (final entry in _assignments.entries) {
-      if (entry.key.startsWith(shiftTitle) && entry.value.id == employee.id) {
+      if (entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id) {
         count++;
       }
     }
@@ -1084,9 +1081,19 @@ class _WeekViewState extends State<WeekView> {
         color: Colors.white,
         border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
       ),
-      child: Column(
+      child: Row(
         children: [
-          // Calendar grid - tabs now moved to main bar
+          // Profession labels for current shift
+          Container(
+            width: 32, // Compact width to save space
+            color: const Color(0xFF9DB4C0), // Cadet gray from palette
+            child: Column(
+              children: _currentTabIndex == 0 
+                  ? _buildDayShiftProfessionLabels()
+                  : _buildNightShiftProfessionLabels(),
+            ),
+          ),
+          // Calendar grid for current shift
           Expanded(
             child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
           ),
@@ -1105,10 +1112,10 @@ class _WeekViewState extends State<WeekView> {
         ),
         child: Center(
           child: Text(
-            _getRoleDisplayName(profession),
+            _getCompactRoleName(profession),
             style: const TextStyle(
               color: Colors.white, // White text on cadet gray background
-              fontSize: 9,
+              fontSize: 8, // Smaller font for compact width
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
@@ -1128,10 +1135,10 @@ class _WeekViewState extends State<WeekView> {
         ),
         child: Center(
           child: Text(
-            _getRoleDisplayName(profession),
+            _getCompactRoleName(profession),
             style: const TextStyle(
               color: Colors.white, // White text on cadet gray background
-              fontSize: 9,
+              fontSize: 8, // Smaller font for compact width
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
@@ -1141,9 +1148,37 @@ class _WeekViewState extends State<WeekView> {
     }).toList();
   }
 
+  // Add compact role name function
+  String _getCompactRoleName(EmployeeRole role) {
+    switch (role) {
+      case EmployeeRole.tj:
+        return 'TJ';
+      case EmployeeRole.varu1:
+        return 'V1';
+      case EmployeeRole.varu2:
+        return 'V2';
+      case EmployeeRole.varu3:
+        return 'V3';
+      case EmployeeRole.varu4:
+        return 'V4';
+      case EmployeeRole.pasta1:
+        return 'P1';
+      case EmployeeRole.pasta2:
+        return 'P2';
+      case EmployeeRole.ict:
+        return 'ICT';
+      case EmployeeRole.tarvike:
+        return 'TR';
+      case EmployeeRole.pora:
+        return 'PR';
+      case EmployeeRole.huolto:
+        return 'HU';
+    }
+  }
+
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    final dayWidth = (MediaQuery.of(context).size.width - 40 - 8) / 7; // 40px profession column + 8px margins (no scrollbar)
+    final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7; // 32px profession column + 8px margins
     
     // Calculate total rows for current shift
     int totalRows = 0;
@@ -1199,11 +1234,15 @@ class _WeekViewState extends State<WeekView> {
     Set<String> processedAssignments = {};
     
     for (final entry in _assignments.entries) {
-      if (entry.key.startsWith(shiftTitle) && !processedAssignments.contains(entry.key)) {
+      if (entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && !processedAssignments.contains(entry.key)) {
         final keyParts = entry.key.split('-');
-        if (keyParts.length >= 3) {
-          final startDay = int.tryParse(keyParts[1]) ?? 0;
-          final lane = int.tryParse(keyParts[2]) ?? 0;
+        if (keyParts.length >= 4) { // Now we have week-shift-day-lane
+          final weekNum = int.tryParse(keyParts[0]) ?? 0;
+          final startDay = int.tryParse(keyParts[2]) ?? 0;
+          final lane = int.tryParse(keyParts[3]) ?? 0;
+          
+          // Only process if it's for current week
+          if (weekNum != widget.weekNumber) continue;
           
           // Check if this block is being dragged
           final blockKey = '${entry.value.id}-$shiftTitle-$lane-$startDay';
@@ -1212,7 +1251,7 @@ class _WeekViewState extends State<WeekView> {
           // Find contiguous assignment duration
           int duration = 1;
           for (int day = startDay + 1; day < 7; day++) {
-            final nextKey = '$shiftTitle-$day-$lane';
+            final nextKey = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Week-specific
             if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
               duration++;
               processedAssignments.add(nextKey);
