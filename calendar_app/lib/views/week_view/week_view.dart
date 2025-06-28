@@ -72,6 +72,21 @@ class _WeekViewState extends State<WeekView> {
   @override
   void initState() {
     super.initState();
+    
+    // FORCE INITIALIZE PROFESSION SETTINGS FOR CURRENT WEEK IMMEDIATELY
+    if (!_weekDayShiftProfessions.containsKey(widget.weekNumber)) {
+      _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
+    }
+    if (!_weekNightShiftProfessions.containsKey(widget.weekNumber)) {
+      _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
+    }
+    if (!_weekDayShiftRows.containsKey(widget.weekNumber)) {
+      _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
+    }
+    if (!_weekNightShiftRows.containsKey(widget.weekNumber)) {
+      _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
+    }
+    
     _loadEmployees();
     _loadAssignments(); // LOAD GLOBAL ASSIGNMENTS
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
@@ -851,22 +866,33 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleResizeStart(DragStartDetails details, Employee employee, String shiftTitle, bool isLeftResize) {
-    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
+    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
+    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
+    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
+    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
     
-    // Get current employee span for originalStartDay and originalDuration
+    // Get current employee span for originalStartDay and originalDuration using profession-based parsing
     final currentKeys = _assignments.entries
-        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
+        .where((entry) {
+          final parsed = _parseAssignmentKey(entry.key);
+          return parsed != null && 
+                 parsed['weekNumber'] == widget.weekNumber && 
+                 parsed['shiftTitle'] == shiftTitle && 
+                 entry.value.id == employee.id;
+        })
         .map((e) => e.key)
         .toList();
     
     currentKeys.sort((a, b) {
-      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
-      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+      final parsedA = _parseAssignmentKey(a);
+      final parsedB = _parseAssignmentKey(b);
+      final dayA = parsedA?['day'] ?? 0;
+      final dayB = parsedB?['day'] ?? 0;
       return dayA.compareTo(dayB);
     });
     
-    final originalStartDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.first.split('-')[2]) ?? 0 : 0;
-    final originalEndDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.last.split('-')[2]) ?? 0 : 0;
+    final originalStartDay = currentKeys.isNotEmpty ? (_parseAssignmentKey(currentKeys.first)?['day'] ?? 0) : 0;
+    final originalEndDay = currentKeys.isNotEmpty ? (_parseAssignmentKey(currentKeys.last)?['day'] ?? 0) : 0;
     final originalDuration = originalEndDay - originalStartDay + 1;
     
     // Initialize resize mode with smooth transition
@@ -887,7 +913,10 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
+    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
+    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
+    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
+    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
     
     // Update only the current position for smooth visual feedback
     final currentDragState = _dragStates?[blockKey];
@@ -905,7 +934,10 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleRightResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
+    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
+    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
+    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
+    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
     
     // Update only the current position for smooth visual feedback
     final currentDragState = _dragStates?[blockKey];
@@ -965,60 +997,54 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
-  int _getEmployeeLane(Employee employee, String shiftTitle) {
+  // 🔥 NEW: Get employee's absolute lane using profession-based system
+  int _getEmployeeAbsoluteLane(Employee employee, String shiftTitle) {
     final entry = _assignments.entries
-        .firstWhere((e) => e.key.startsWith('${widget.weekNumber}-$shiftTitle') && e.value.id == employee.id,
-                   orElse: () => MapEntry('0-0-0-0', Employee(id: '', name: '', category: EmployeeCategory.ab, type: EmployeeType.vakityontekija, role: EmployeeRole.varu1, shiftCycle: ShiftCycle.none)));
-    return int.tryParse(entry.key.split('-')[3]) ?? 0;
+        .where((e) {
+          final parsed = _parseAssignmentKey(e.key);
+          return parsed != null && 
+                 parsed['weekNumber'] == widget.weekNumber && 
+                 parsed['shiftTitle'] == shiftTitle && 
+                 e.value.id == employee.id;
+        })
+        .firstOrNull;
+    
+    if (entry == null) return 0;
+    
+    final parsed = _parseAssignmentKey(entry.key);
+    if (parsed == null) return 0;
+    
+    final profession = parsed['profession'] as EmployeeRole;
+    final professionRow = parsed['professionRow'] as int;
+    
+    return _getProfessionToAbsoluteLane(profession, professionRow, shiftTitle);
   }
 
   int _getEmployeeStartDay(Employee employee, String shiftTitle) {
     final entries = _assignments.entries
-        .where((e) => e.key.startsWith('${widget.weekNumber}-$shiftTitle') && e.value.id == employee.id)
+        .where((e) {
+          final parsed = _parseAssignmentKey(e.key);
+          return parsed != null && 
+                 parsed['weekNumber'] == widget.weekNumber && 
+                 parsed['shiftTitle'] == shiftTitle && 
+                 e.value.id == employee.id;
+        })
         .toList();
     if (entries.isEmpty) return 0;
     
     entries.sort((a, b) {
-      final dayA = int.tryParse(a.key.split('-')[2]) ?? 0;
-      final dayB = int.tryParse(b.key.split('-')[2]) ?? 0;
+      final parsedA = _parseAssignmentKey(a.key);
+      final parsedB = _parseAssignmentKey(b.key);
+      final dayA = parsedA?['day'] ?? 0;
+      final dayB = parsedB?['day'] ?? 0;
       return dayA.compareTo(dayB);
     });
     
-    return int.tryParse(entries.first.key.split('-')[2]) ?? 0;
+    final parsed = _parseAssignmentKey(entries.first.key);
+    return parsed?['day'] ?? 0;
   }
 
-  void _updateResizeAssignments(Employee employee, String shiftTitle, int startDay, int duration, int lane) {
-    // Update assignments directly without setState to avoid rebuilds during drag
-    
-    // FIRST: Find and remove ONLY the original block being resized (exact same lane)
-    final originalKeys = _assignments.keys
-        .where((key) => key.startsWith('${widget.weekNumber}-$shiftTitle') && 
-                       _assignments[key]?.id == employee.id &&
-                       key.split('-')[3] == lane.toString()) // Updated index for week-shift-day-lane
-        .toList();
-    
-    // Remove the original block being resized
-    for (final key in originalKeys) {
-      _assignments.remove(key);
-    }
-    
-    // SECOND: For resizing, remove overlapping assignments from other blocks 
-    for (int day = startDay; day < startDay + duration && day < 7; day++) {
-      final conflictingKeys = _assignments.keys
-          .where((key) => key.startsWith('${widget.weekNumber}-') && key.contains('-$day-') && _assignments[key]?.id == employee.id)
-          .toList();
-      
-      for (final key in conflictingKeys) {
-        _assignments.remove(key);
-      }
-    }
-    
-    // THIRD: Add new resized block
-    for (int day = startDay; day < startDay + duration && day < 7; day++) {
-      final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Week-specific
-      _assignments[key] = employee;
-    }
-  }
+
 
   void _handleResizeEnd() {
     if (_resizeModeBlockKey == null || _dragStates == null) return;
@@ -1027,40 +1053,43 @@ class _WeekViewState extends State<WeekView> {
     final dragState = _dragStates![blockKey];
     
     if (dragState != null) {
-      // Calculate snap-to-grid position with improved grid detection
-      final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7;
-          final gridLeft = 40;
+      // 🔥 USE SAME GRID SNAPPING AS WORKING DROP LOGIC!
+      final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7; // Match working calculation
+      final gridLeft = 40; // Profession column width
       
-      // Get employee and shift info from block key
+      // Get employee and shift info from block key (format: employeeId-shiftTitle-lane-startDay)
       final keyParts = blockKey.split('-');
       final employeeId = keyParts[0];
       final shiftTitle = keyParts[1];
       final blockLane = int.tryParse(keyParts[2]) ?? 0;
       
       // Find the employee
-      final employee = _assignments.values.firstWhere((e) => e.id == employeeId);
+      final employee = _assignments.values.firstWhere((e) => e.id == employeeId, 
+          orElse: () => Employee(id: '', name: '', category: EmployeeCategory.ab, type: EmployeeType.vakityontekija, role: EmployeeRole.varu1, shiftCycle: ShiftCycle.none));
+      
+      if (employee.id.isEmpty) return;
+      
+      // 🔥 SIMPLE GRID SNAPPING - NO COMPLEX TOLERANCE BULLSHIT!
+      final relativeX = dragState.currentX - gridLeft;
+      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6); // Same as working drop logic!
       
       if (dragState.isLeftResize) {
-        // Left resize - calculate target day from drag position
-        final deltaX = dragState.currentX - dragState.startX;
-        final targetDay = ((dragState.originalStartDay * dayWidth + deltaX) / dayWidth).round().clamp(0, 6);
+        // LEFT RESIZE - change start day, keep original end
         final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
         final newStartDay = targetDay.clamp(0, originalEnd);
         final newDuration = originalEnd - newStartDay + 1;
         
-        if (newDuration > 0 && newStartDay != dragState.originalStartDay) {
-          _updateResizeAssignments(employee, shiftTitle, newStartDay, newDuration, blockLane);
+        // Update only if start day actually changed
+        if (newStartDay != dragState.originalStartDay && newDuration > 0) {
+          _handleResize(employee, shiftTitle, newStartDay, newDuration, blockLane);
         }
       } else {
-        // Right resize - calculate target day from drag position
-        final deltaX = dragState.currentX - dragState.startX;
-        final currentEndPosition = (dragState.originalStartDay + dragState.originalDuration) * dayWidth;
-        final newEndPosition = currentEndPosition + deltaX;
-        final targetDay = (newEndPosition / dayWidth).round().clamp(dragState.originalStartDay, 7) - 1;
+        // RIGHT RESIZE - keep original start, change duration
         final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay);
         
-        if (newDuration > 0 && newDuration != dragState.originalDuration) {
-          _updateResizeAssignments(employee, shiftTitle, dragState.originalStartDay, newDuration, blockLane);
+        // Update only if duration actually changed
+        if (newDuration != dragState.originalDuration) {
+          _handleResize(employee, shiftTitle, dragState.originalStartDay, newDuration, blockLane);
         }
       }
     }
@@ -1245,7 +1274,7 @@ class _WeekViewState extends State<WeekView> {
                            flex: 3, // Takes 3/5 of the space (20% shorter)
                            child: Draggable<Employee>(
                              data: employee,
-                             feedback: Material(
+                               feedback: Material(
                                child: Container(
                                  width: 120,
                                  height: 24,
@@ -2451,19 +2480,25 @@ class _WeekViewState extends State<WeekView> {
     // 🔥 FIND THE SPAN USING PROFESSION-BASED KEYS!
     final thisBlockKeys = <String>[];
     
-    // Find this employee's assignment keys for this shift
+    // Find this employee's assignment keys for this shift using profession-based parsing
     final employeeKeys = _assignments.entries
-        .where((entry) => 
-            entry.value.id == employee.id && 
-            entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
+        .where((entry) {
+          final parsed = _parseAssignmentKey(entry.key);
+          return parsed != null && 
+                 parsed['weekNumber'] == widget.weekNumber && 
+                 parsed['shiftTitle'] == shiftTitle && 
+                 entry.value.id == employee.id;
+        })
         .map((e) => e.key)
         .toList();
     
     if (employeeKeys.isNotEmpty) {
       // Sort by day to get the span
       employeeKeys.sort((a, b) {
-        final dayA = int.tryParse(a.split('-')[2]) ?? 0;
-        final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+        final parsedA = _parseAssignmentKey(a);
+        final parsedB = _parseAssignmentKey(b);
+        final dayA = parsedA?['day'] ?? 0;
+        final dayB = parsedB?['day'] ?? 0;
         return dayA.compareTo(dayB);
       });
       thisBlockKeys.addAll(employeeKeys);
@@ -2472,7 +2507,7 @@ class _WeekViewState extends State<WeekView> {
     if (thisBlockKeys.isEmpty) return [];
     
     final dayIndices = thisBlockKeys
-        .map((key) => int.tryParse(key.split('-')[2]) ?? 0)
+        .map((key) => _parseAssignmentKey(key)?['day'] ?? 0)
         .toList()..sort();
     
     final startIndex = dayIndices.first;
