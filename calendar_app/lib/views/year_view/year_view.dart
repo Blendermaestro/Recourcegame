@@ -71,6 +71,8 @@ class _YearViewState extends State<YearView> {
     final prefs = await SharedPreferences.getInstance();
     final assignmentsJson = prefs.getString('assignments');
     
+    print('Year View - Loading assignments...');
+    
     if (assignmentsJson != null) {
       final Map<String, dynamic> assignmentsMap = json.decode(assignmentsJson);
       _assignments.clear();
@@ -80,9 +82,16 @@ class _YearViewState extends State<YearView> {
         _assignments[entry.key] = Employee.fromJson(employeeData);
       }
       
+      print('Year View - Loaded ${_assignments.length} assignments:');
+      for (final key in _assignments.keys) {
+        print('  $key -> ${_assignments[key]?.name}');
+      }
+      
       if (mounted) {
         setState(() {});
       }
+    } else {
+      print('Year View - No assignments found in SharedPreferences');
     }
   }
 
@@ -191,7 +200,16 @@ class _YearViewState extends State<YearView> {
   }
 
   Color _getCategoryColor(EmployeeCategory category) {
-    return category.color;
+    switch (category) {
+      case EmployeeCategory.ab:
+        return Colors.green[400]!; // Light green
+      case EmployeeCategory.cd:
+        return Colors.blue[400]!; // Light blue
+      case EmployeeCategory.huolto:
+        return Colors.orange[400]!; // Light orange
+      case EmployeeCategory.sijainen:
+        return Colors.yellow[400]!; // Light yellow
+    }
   }
 
   Color _getTextColorForCategory(EmployeeCategory category) {
@@ -243,20 +261,6 @@ class _YearViewState extends State<YearView> {
       ),
       child: Row(
         children: [
-          // Week number
-          Container(
-            width: 50,
-            child: Center(
-              child: Text(
-                'W$weekNumber',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Color(0xFF253237),
-                ),
-              ),
-            ),
-          ),
           // Profession header space
           Container(
             width: 60,
@@ -313,7 +317,7 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
     const rowHeight = 20.0; // Smaller for year view
-    final dayWidth = (MediaQuery.of(context).size.width - 110 - 16) / 7; // 50px week number + 60px professions + margins
+    final dayWidth = (MediaQuery.of(context).size.width - 60 - 16) / 7; // 60px professions + margins
     
     final professions = isDayShift 
         ? _getDayShiftProfessions(weekNumber)
@@ -344,7 +348,6 @@ class _YearViewState extends State<YearView> {
             color: isDayShift ? Colors.grey[200] : Colors.grey[300],
             child: Row(
               children: [
-                Container(width: 50), // Week number space
                 Container(width: 60), // Profession space
                 Expanded(
                   child: Center(
@@ -365,8 +368,6 @@ class _YearViewState extends State<YearView> {
           Expanded(
             child: Row(
               children: [
-                // Week number space
-                Container(width: 50),
                 // Profession labels column
                 Container(
                   width: 60,
@@ -463,42 +464,65 @@ class _YearViewState extends State<YearView> {
     List<Widget> blocks = [];
     Set<String> processedAssignments = {};
     
+    // DEBUG: Print assignment keys to see what's available
+    print('Year View Debug - Week $weekNumber, Shift: $shiftTitle');
+    print('Available assignments: ${_assignments.keys.where((k) => k.startsWith('$weekNumber-')).toList()}');
+    
     for (final entry in _assignments.entries) {
-      if (entry.key.startsWith('$weekNumber-$shiftTitle') && !processedAssignments.contains(entry.key)) {
-        final keyParts = entry.key.split('-');
-        if (keyParts.length >= 4) {
-          final weekNum = int.tryParse(keyParts[0]) ?? 0;
-          final startDay = int.tryParse(keyParts[2]) ?? 0;
-          final lane = int.tryParse(keyParts[3]) ?? 0;
+      final key = entry.key;
+      
+      // Parse key: should be like "1-A / Päivävuoro-2-1" (week-shift-day-lane)  
+      // But shift title has "/" and spaces, so we need to be more careful
+      if (key.startsWith('$weekNumber-') && key.contains(shiftTitle) && !processedAssignments.contains(key)) {
+        // Split carefully - the shift title contains spaces and "/"
+        final parts = key.split('-');
+        if (parts.length >= 4) {
+          final weekPart = parts[0];
           
-          if (weekNum != weekNumber) continue;
+          // Find where shift title ends and day begins  
+          // Key format: week-shiftTitle-day-lane
+          // But shiftTitle can have spaces/slashes
+          final keyWithoutWeek = key.substring(weekPart.length + 1); // Remove "week-"
           
-          // Find contiguous assignment duration
-          int duration = 1;
-          for (int day = startDay + 1; day < 7; day++) {
-            final nextKey = '$weekNumber-$shiftTitle-$day-$lane';
-            if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
-              duration++;
-              processedAssignments.add(nextKey);
-            } else {
-              break;
+          if (keyWithoutWeek.startsWith(shiftTitle)) {
+            final afterShift = keyWithoutWeek.substring(shiftTitle.length + 1); // Remove "shiftTitle-"
+            final remainingParts = afterShift.split('-');
+            
+            if (remainingParts.length >= 2) {
+              final startDay = int.tryParse(remainingParts[0]) ?? 0;
+              final lane = int.tryParse(remainingParts[1]) ?? 0;
+              
+              print('Found assignment: $key -> ${entry.value.name} (day: $startDay, lane: $lane)');
+              
+              // Find contiguous assignment duration
+              int duration = 1;
+              for (int day = startDay + 1; day < 7; day++) {
+                final nextKey = '$weekNumber-$shiftTitle-$day-$lane';
+                if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
+                  duration++;
+                  processedAssignments.add(nextKey);
+                } else {
+                  break;
+                }
+              }
+              
+              blocks.add(
+                Positioned(
+                  left: startDay * dayWidth,
+                  top: lane * rowHeight,
+                  width: (dayWidth * duration) - 1,
+                  height: rowHeight - 1,
+                  child: _buildAssignmentBlock(entry.value),
+                ),
+              );
+              processedAssignments.add(key);
             }
           }
-          
-          blocks.add(
-            Positioned(
-              left: startDay * dayWidth, // No offset needed now - positioned within the days grid
-              top: lane * rowHeight,
-              width: (dayWidth * duration) - 1,
-              height: rowHeight - 1,
-              child: _buildAssignmentBlock(entry.value),
-            ),
-          );
-          processedAssignments.add(entry.key);
         }
       }
     }
     
+    print('Created ${blocks.length} blocks for $shiftTitle');
     return blocks;
   }
 
@@ -566,7 +590,7 @@ class _YearViewState extends State<YearView> {
                   Expanded(
                     child: Center(
                       child: Text(
-                        'YEAR OVERVIEW - Week $_currentWeek',
+                        'WEEK $_currentWeek OVERVIEW',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
