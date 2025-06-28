@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:calendar_app/services/auth_service.dart';
+import 'package:flutter/foundation.dart';
+// Platform-specific import removed - will use conditional web APIs
 
 class DragState {
   final double startX;
@@ -581,7 +583,7 @@ class _WeekViewState extends State<WeekView> {
         // Find original duration
         int originalDuration = 1;
         for (int day = blockStartDay; day < 7; day++) {
-          final key = '$shiftTitle-$day-$blockLane';
+          final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific key
           if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
             originalDuration = day - blockStartDay + 1;
           } else {
@@ -636,7 +638,7 @@ class _WeekViewState extends State<WeekView> {
         // Find original duration
         int originalDuration = 1;
         for (int day = blockStartDay; day < 7; day++) {
-          final key = '$shiftTitle-$day-$blockLane';
+          final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific key
           if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
             originalDuration = day - blockStartDay + 1;
           } else {
@@ -762,6 +764,17 @@ class _WeekViewState extends State<WeekView> {
 
   void _showEmployeeQuickFillMenu(Employee employee) {
     // Quick fill menu implementation
+  }
+
+  // Add fullscreen toggle function
+  void _toggleFullscreen() {
+    // For now, show a message - fullscreen requires platform-specific implementation
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fullscreen: Use browser F11 or mobile browser fullscreen options'),
+        duration: Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _navigateToEmployeeSettings() async {
@@ -1108,6 +1121,7 @@ class _WeekViewState extends State<WeekView> {
       return List.generate(rows, (index) => Container(
         height: 25.2, // Match calendar grid row height
         decoration: BoxDecoration(
+          color: const Color(0xFF9DB4C0), // Cadet gray background
           border: Border(bottom: BorderSide(color: const Color(0xFF5C6B73), width: 0.5)), // Payne's gray border
         ),
         child: Center(
@@ -1131,6 +1145,7 @@ class _WeekViewState extends State<WeekView> {
       return List.generate(rows, (index) => Container(
         height: 25.2, // Match calendar grid row height
         decoration: BoxDecoration(
+          color: const Color(0xFF9DB4C0), // Cadet gray background
           border: Border(bottom: BorderSide(color: const Color(0xFF5C6B73), width: 0.5)), // Payne's gray border
         ),
         child: Center(
@@ -1175,6 +1190,8 @@ class _WeekViewState extends State<WeekView> {
         return 'HU';
     }
   }
+
+
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
@@ -1529,221 +1546,64 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildAssignmentBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    return Container(
-      margin: const EdgeInsets.all(0.5),
-      decoration: BoxDecoration(
-        color: _getCategoryColor(employee.category),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.grey[400]!, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 2,
-            offset: const Offset(1, 1),
+    return Draggable<Employee>(
+      data: employee,
+      onDragStarted: () {
+        _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+      },
+      feedback: Material(
+        child: Container(
+          width: 80,
+          height: 18,
+          decoration: BoxDecoration(
+            color: Colors.grey[600]?.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.grey[400]!, width: 1),
           ),
-        ],
+          child: Center(
+            child: Text(
+              employee.name,
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
       ),
-      child: GestureDetector(
-        onLongPress: () {
-          final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
-          if (_resizeModeBlockKey != blockKey) {
-            _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-          }
-        },
-        child: Builder(
-          builder: (context) {
-            final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
-            
-            return _resizeModeBlockKey == blockKey 
-                ? Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: GestureDetector(
-                            onTap: () {
-                              _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-                            },
-                            child: Center(
-                              child: Text(
-                                employee.name,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        ),
-                        ...() {
-                          final thisBlockKeys = <String>[];
-                          for (int day = blockStartDay; day < 7; day++) {
-                            final key = '$shiftTitle-$day-$blockLane';
-                            if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-                              thisBlockKeys.add(key);
-                            } else {
-                              break;
-                            }
-                          }
-                          
-                          if (thisBlockKeys.isEmpty) return <Widget>[];
-                          
-                          final dayIndices = thisBlockKeys
-                              .map((key) => int.tryParse(key.split('-')[1]) ?? 0)
-                              .toList()..sort();
-                          
-                          final startIndex = dayIndices.first;
-                          final endIndex = dayIndices.last;
-                          final shiftWidth = endIndex - startIndex + 1;
-                          final canResizeLeft = shiftWidth > 1 || startIndex > 0;
-                          final canResizeRight = shiftWidth > 1 || endIndex < 6;
-                          
-                          final handles = <Widget>[];
-                          
-                          if (canResizeLeft) {
-                            handles.add(
-                              Positioned(
-                                left: -2.0,
-                                top: -4.0,
-                                bottom: -4.0,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onPanUpdate: (details) => _handleLeftResize(details, employee, shiftTitle),
-                                  onPanEnd: (details) => _handleResizeEnd(),
-                                  child: Container(
-                                    width: 24,
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[800],
-                                      borderRadius: const BorderRadius.only(
-                                        topLeft: Radius.circular(6),
-                                        bottomLeft: Radius.circular(6),
-                                      ),
-                                      border: Border.all(color: Colors.white, width: 2),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(Icons.keyboard_double_arrow_left, size: 16, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          
-                          if (canResizeRight) {
-                            handles.add(
-                              Positioned(
-                                right: -2.0,
-                                top: -4.0,
-                                bottom: -4.0,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onPanUpdate: (details) => _handleRightResize(details, employee, shiftTitle),
-                                  onPanEnd: (details) => _handleResizeEnd(),
-                                  child: Container(
-                                    width: 24,
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[800],
-                                      borderRadius: const BorderRadius.only(
-                                        topRight: Radius.circular(6),
-                                        bottomRight: Radius.circular(6),
-                                      ),
-                                      border: Border.all(color: Colors.white, width: 2),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(Icons.keyboard_double_arrow_right, size: 16, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          
-                          return handles;
-                        }(),
-                      ],
-                    ),
-                  )
-                : Draggable<Employee>(
-                    data: employee,
-                    onDragStarted: () {
-                      _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
-                    },
-                    onDragEnd: (details) {
-                      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-                      if (renderBox != null) {
-                        final localPosition = renderBox.globalToLocal(details.offset);
-                        final calendarBounds = Rect.fromLTWH(0, 0, renderBox.size.width, renderBox.size.height);
-                        
-                        if (!calendarBounds.contains(localPosition)) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${employee.name} removed from calendar'),
-                              duration: const Duration(seconds: 2),
-                              backgroundColor: Colors.red[400],
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    feedback: Material(
-                      child: Container(
-                        width: 80,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[600]?.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey[400]!, width: 1),
-                        ),
-                        child: Center(
-                          child: Text(
-                            employee.name,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ),
-                    childWhenDragging: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Center(
-                        child: Text(
-                          employee.name,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey[300],
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        employee.name,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.black,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  );
-          },
+      childWhenDragging: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[400],
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(0.5),
+        decoration: BoxDecoration(
+          color: _getCategoryColor(employee.category),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.grey[400]!, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 2,
+              offset: const Offset(1, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            employee.name,
+            style: TextStyle(
+              fontSize: 11,
+              color: _getTextColorForCategory(employee.category),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -1782,21 +1642,21 @@ class _WeekViewState extends State<WeekView> {
                   Navigator.pop(context);
                   // Remove current assignment and assign for all 7 days
                   final allKeys = _assignments.entries
-                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith(shiftTitle))
+                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
                       .map((e) => e.key)
                       .toList();
                   
                   if (allKeys.isNotEmpty) {
                     allKeys.sort((a, b) {
-                      final dayA = int.tryParse(a.split('-')[1]) ?? 0;
-                      final dayB = int.tryParse(b.split('-')[1]) ?? 0;
+                      final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
+                      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
                       return dayA.compareTo(dayB);
                     });
                     
                     final firstKey = allKeys.first;
                     final keyParts = firstKey.split('-');
-                    if (keyParts.length >= 3) {
-                      final lane = int.tryParse(keyParts[2]) ?? 0;
+                    if (keyParts.length >= 4) { // Week-shift-day-lane format
+                      final lane = int.tryParse(keyParts[3]) ?? 0;
                       // Remove current assignment
                       _handleRemove(employee, shiftTitle);
                       // Assign for all 7 days starting from day 0
@@ -1812,27 +1672,27 @@ class _WeekViewState extends State<WeekView> {
                   Navigator.pop(context);
                   // Remove all assignments and keep only the first day
                   final allKeys = _assignments.entries
-                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith(shiftTitle))
+                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
                       .map((e) => e.key)
                       .toList();
                   
                   if (allKeys.isNotEmpty) {
                     allKeys.sort((a, b) {
-                      final dayA = int.tryParse(a.split('-')[1]) ?? 0;
-                      final dayB = int.tryParse(b.split('-')[1]) ?? 0;
+                      final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
+                      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
                       return dayA.compareTo(dayB);
                     });
                     
                     final firstKey = allKeys.first;
                     final keyParts = firstKey.split('-');
-                    if (keyParts.length >= 3) {
-                      final startDay = int.tryParse(keyParts[1]) ?? 0;
-                      final lane = int.tryParse(keyParts[2]) ?? 0;
+                    if (keyParts.length >= 4) { // Week-shift-day-lane format
+                      final startDay = int.tryParse(keyParts[2]) ?? 0; // Day is now index 2
+                      final lane = int.tryParse(keyParts[3]) ?? 0; // Lane is now index 3
                       // Remove current assignment
                       _handleRemove(employee, shiftTitle);
                       // Add back just one day
                       setState(() {
-                        final key = '$shiftTitle-$startDay-$lane';
+                        final key = '${widget.weekNumber}-$shiftTitle-$startDay-$lane'; // Week-specific
                         _assignments[key] = employee;
                       });
                     }
@@ -1857,14 +1717,14 @@ class _WeekViewState extends State<WeekView> {
   void _handleBlockResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
     // Find the assignment
     final allKeys = _assignments.entries
-        .where((entry) => entry.value.id == employee.id && entry.key.startsWith(shiftTitle))
+        .where((entry) => entry.value.id == employee.id && entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
         .map((e) => e.key)
         .toList();
     
     if (allKeys.isNotEmpty) {
       allKeys.sort((a, b) {
-        final dayA = int.tryParse(a.split('-')[1]) ?? 0;
-        final dayB = int.tryParse(b.split('-')[1]) ?? 0;
+        final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
+        final dayB = int.tryParse(b.split('-')[2]) ?? 0;
         return dayA.compareTo(dayB);
       });
       
@@ -1873,10 +1733,10 @@ class _WeekViewState extends State<WeekView> {
       final firstKeyParts = firstKey.split('-');
       final lastKeyParts = lastKey.split('-');
       
-      if (firstKeyParts.length >= 3) {
-        final startDay = int.tryParse(firstKeyParts[1]) ?? 0;
-        final endDay = int.tryParse(lastKeyParts[1]) ?? 0;
-        final lane = int.tryParse(firstKeyParts[2]) ?? 0;
+      if (firstKeyParts.length >= 4) { // Week-shift-day-lane format
+        final startDay = int.tryParse(firstKeyParts[2]) ?? 0; // Day is index 2
+        final endDay = int.tryParse(lastKeyParts[2]) ?? 0;
+        final lane = int.tryParse(firstKeyParts[3]) ?? 0; // Lane is index 3
         
         // Get current position
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
@@ -1937,7 +1797,7 @@ class _WeekViewState extends State<WeekView> {
     final shiftTitles = _getShiftTitlesForWeek(widget.weekNumber);
     final dates = _getDatesForWeek(widget.weekNumber);
 
-    print('WeekView build: ${defaultEmployees.length} employees'); // Debug
+// Performance optimized with GPU acceleration
 
     return GestureDetector(
       onTap: () {
@@ -2006,6 +1866,16 @@ class _WeekViewState extends State<WeekView> {
                         icon: const Icon(Icons.arrow_forward_ios, size: 12),
                         color: widget.weekNumber < 52 ? Colors.white : Colors.white38,
                         padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    // Fullscreen button
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: _toggleFullscreen,
+                        icon: const Icon(Icons.fullscreen, size: 14, color: Colors.white),
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Fullscreen',
                       ),
                     ),
                     // Day/Night shift tabs
