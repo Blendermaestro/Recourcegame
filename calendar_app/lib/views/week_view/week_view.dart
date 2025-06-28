@@ -73,6 +73,8 @@ class _WeekViewState extends State<WeekView> {
   void initState() {
     super.initState();
     _loadEmployees();
+    _loadAssignments(); // LOAD GLOBAL ASSIGNMENTS
+    _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
   }
 
   Future<void> _loadEmployees() async {
@@ -235,6 +237,7 @@ class _WeekViewState extends State<WeekView> {
       setState(() {
         _assignments.addAll(newAssignments);
       });
+      _saveAssignments(); // SAVE TO PERSISTENT STORAGE
     }
   }
 
@@ -271,12 +274,14 @@ class _WeekViewState extends State<WeekView> {
         _assignments[key] = employee;
       }
     });
+    _saveAssignments(); // SAVE TO PERSISTENT STORAGE
   }
 
   void _handleRemove(Employee employee, String shiftTitle) {
     setState(() {
       _removeEmployeeFromShift(employee, shiftTitle);
     });
+    _saveAssignments(); // SAVE TO PERSISTENT STORAGE
   }
 
   void _removeEmployeeFromShift(Employee employee, String shiftTitle) {
@@ -291,23 +296,24 @@ class _WeekViewState extends State<WeekView> {
 
   void _removeSpecificBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
     // Pre-compute keys to remove (outside setState for better performance)
-    final thisBlockKeys = <String>[];
-    for (int day = blockStartDay; day < 7; day++) {
+      final thisBlockKeys = <String>[];
+      for (int day = blockStartDay; day < 7; day++) {
       final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane';
-      if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-        thisBlockKeys.add(key);
-      } else {
-        break; // Stop at first gap
+        if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
+          thisBlockKeys.add(key);
+        } else {
+          break; // Stop at first gap
+        }
       }
-    }
-    
+      
     // Single setState with batched removal
     if (thisBlockKeys.isNotEmpty) {
       setState(() {
-        for (final key in thisBlockKeys) {
-          _assignments.remove(key);
-        }
-      });
+      for (final key in thisBlockKeys) {
+        _assignments.remove(key);
+      }
+    });
+    _saveAssignments(); // SAVE TO PERSISTENT STORAGE
     }
   }
 
@@ -331,6 +337,144 @@ class _WeekViewState extends State<WeekView> {
     // Start from Tuesday (weekStart + 1 day)
     final tuesdayStart = weekStart.add(const Duration(days: 1));
     return List.generate(7, (index) => tuesdayStart.add(Duration(days: index)));
+  }
+
+  // GLOBAL ASSIGNMENT SAVING/LOADING - NOT USER SPECIFIC!
+  Future<void> _saveAssignments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final assignmentsMap = <String, Map<String, dynamic>>{};
+      
+      for (final entry in _assignments.entries) {
+        assignmentsMap[entry.key] = entry.value.toJson();
+      }
+      
+      final assignmentsJson = json.encode(assignmentsMap);
+      await prefs.setString('assignments', assignmentsJson);
+      print('WeekView: Saved ${_assignments.length} assignments to SharedPreferences');
+    } catch (e) {
+      print('WeekView: Error saving assignments: $e');
+    }
+  }
+
+  Future<void> _loadAssignments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final assignmentsJson = prefs.getString('assignments');
+      
+      if (assignmentsJson != null) {
+        final Map<String, dynamic> assignmentsMap = json.decode(assignmentsJson);
+        _assignments.clear();
+        
+        for (final entry in assignmentsMap.entries) {
+          final employeeData = entry.value as Map<String, dynamic>;
+          _assignments[entry.key] = Employee.fromJson(employeeData);
+        }
+        
+        print('WeekView: Loaded ${_assignments.length} assignments from SharedPreferences');
+        if (mounted) {
+          setState(() {});
+        }
+      } else {
+        print('WeekView: No assignments found in SharedPreferences');
+      }
+    } catch (e) {
+      print('WeekView: Error loading assignments: $e');
+    }
+  }
+
+  // SAVE PROFESSION SETTINGS GLOBALLY TOO
+  Future<void> _saveProfessionSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Save day/night profession settings for all weeks
+      final dayProfessionsJson = json.encode(_weekDayShiftProfessions.map(
+        (week, profs) => MapEntry(week.toString(), profs.map((k, v) => MapEntry(k.name, v)))
+      ));
+      final nightProfessionsJson = json.encode(_weekNightShiftProfessions.map(
+        (week, profs) => MapEntry(week.toString(), profs.map((k, v) => MapEntry(k.name, v)))
+      ));
+      final dayRowsJson = json.encode(_weekDayShiftRows.map(
+        (week, rows) => MapEntry(week.toString(), rows.map((k, v) => MapEntry(k.name, v)))
+      ));
+      final nightRowsJson = json.encode(_weekNightShiftRows.map(
+        (week, rows) => MapEntry(week.toString(), rows.map((k, v) => MapEntry(k.name, v)))
+      ));
+      
+      await prefs.setString('week_day_professions', dayProfessionsJson);
+      await prefs.setString('week_night_professions', nightProfessionsJson);
+      await prefs.setString('week_day_rows', dayRowsJson);
+      await prefs.setString('week_night_rows', nightRowsJson);
+      
+      print('WeekView: Saved profession settings for ${_weekDayShiftProfessions.length} weeks');
+    } catch (e) {
+      print('WeekView: Error saving profession settings: $e');
+    }
+  }
+
+  Future<void> _loadProfessionSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load profession settings
+      final dayProfessionsJson = prefs.getString('week_day_professions');
+      final nightProfessionsJson = prefs.getString('week_night_professions');
+      final dayRowsJson = prefs.getString('week_day_rows');
+      final nightRowsJson = prefs.getString('week_night_rows');
+      
+      if (dayProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayProfessionsJson);
+        _weekDayShiftProfessions.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekDayShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      if (nightProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightProfessionsJson);
+        _weekNightShiftProfessions.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekNightShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      if (dayRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayRowsJson);
+        _weekDayShiftRows.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekDayShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      if (nightRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightRowsJson);
+        _weekNightShiftRows.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekNightShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      print('WeekView: Loaded profession settings');
+    } catch (e) {
+      print('WeekView: Error loading profession settings: $e');
+    }
   }
 
   void _showAddEmployeeDialog(EmployeeCategory category) {
@@ -458,11 +602,13 @@ class _WeekViewState extends State<WeekView> {
                         _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
                         _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
                       });
+                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
                     },
                     child: const Text('Palauta oletukset'),
                   ),
                   TextButton(
                     onPressed: () {
+                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
                       setState(() {}); // Refresh main view
                       Navigator.of(context).pop();
                     },
@@ -499,6 +645,7 @@ class _WeekViewState extends State<WeekView> {
                       setDialogState(() {
                         professions[role] = value ?? false;
                       });
+                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
                     },
                   ),
                   // Profession name
@@ -516,6 +663,7 @@ class _WeekViewState extends State<WeekView> {
                       setDialogState(() {
                         rows[role] = (rows[role]! - 1).clamp(1, 4);
                       });
+                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
                     } : null,
                     icon: const Icon(Icons.remove, size: 16),
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -536,6 +684,7 @@ class _WeekViewState extends State<WeekView> {
                       setDialogState(() {
                         rows[role] = (rows[role]! + 1).clamp(1, 4);
                       });
+                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
                     } : null,
                     icon: const Icon(Icons.add, size: 16),
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -660,9 +809,9 @@ class _WeekViewState extends State<WeekView> {
     currentKeys.sort((a, b) {
       final dayA = int.tryParse(a.split('-')[2]) ?? 0;
       final dayB = int.tryParse(b.split('-')[2]) ?? 0;
-      return dayA.compareTo(dayB);
-    });
-    
+          return dayA.compareTo(dayB);
+        });
+        
     final firstKey = currentKeys.first;
     final lastKey = currentKeys.last;
     final currentStartDay = int.tryParse(firstKey.split('-')[2]) ?? 0;
@@ -752,7 +901,7 @@ class _WeekViewState extends State<WeekView> {
     if (dragState != null) {
       // Calculate snap-to-grid position with improved grid detection
       final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7;
-      final gridLeft = 40;
+          final gridLeft = 40;
       
       // Get employee and shift info from block key
       final keyParts = blockKey.split('-');
@@ -895,59 +1044,59 @@ class _WeekViewState extends State<WeekView> {
                 Expanded(
                   flex: 3, // 20% shorter (3/5 width instead of 4/5)
                   child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _collapsedGroups[category] = !isCollapsed;
-                      });
-                    },
-                    child: Container(
+              onTap: () {
+                setState(() {
+                  _collapsedGroups[category] = !isCollapsed;
+                });
+              },
+              child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Reduced padding
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: _getCategoryColor(category),
+                margin: const EdgeInsets.only(bottom: 2),
+                decoration: BoxDecoration(
+                  color: _getCategoryColor(category),
                         borderRadius: BorderRadius.circular(4), // Smaller radius
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
                             blurRadius: 1,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: Row(
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Row(
                         mainAxisSize: MainAxisSize.min, // Shrink to content
-                        children: [
-                          Icon(
-                            isCollapsed ? Icons.expand_more : Icons.expand_less,
+                  children: [
+                    Icon(
+                      isCollapsed ? Icons.expand_more : Icons.expand_less,
                             color: _getTextColorForCategory(category),
                             size: 12, // Smaller icon
-                          ),
+                    ),
                           const SizedBox(width: 2), // Reduced spacing
                           Text(
-                            _getCategoryDisplayName(category),
+                        _getCategoryDisplayName(category),
                             style: TextStyle(
                               color: _getTextColorForCategory(category),
                               fontSize: 9, // Smaller text
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                           const SizedBox(width: 2), // Reduced spacing
-                          GestureDetector(
-                            onTap: () {
-                              _showAddEmployeeDialog(category);
-                            },
-                            child: Container(
+                    GestureDetector(
+                      onTap: () {
+                        _showAddEmployeeDialog(category);
+                      },
+                      child: Container(
                               padding: const EdgeInsets.all(1), // Reduced padding
                               child: Icon(
-                                Icons.add,
+                          Icons.add,
                                 color: _getTextColorForCategory(category),
                                 size: 12, // Smaller icon
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
+                  ],
+                ),
+              ),
                   ),
                 ),
                 // Empty space on the right - more space now
@@ -1162,29 +1311,29 @@ class _WeekViewState extends State<WeekView> {
       key: ValueKey('unified-shift-${widget.weekNumber}-$_currentTabIndex'),
       child: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
+        color: Colors.white,
           border: Border.fromBorderSide(BorderSide(color: Color(0xFF9DB4C0), width: 1)),
         ),
-        child: Row(
+            child: Row(
           key: ValueKey('shift-row-$_currentTabIndex'),
-          children: [
-            // Profession labels for current shift
-            Container(
+              children: [
+                // Profession labels for current shift
+                Container(
               key: const ValueKey('profession-labels'),
               width: 32, // Compact width to save space
               color: const Color(0xFF9DB4C0), // Cadet gray from palette
-              child: Column(
-                children: _currentTabIndex == 0 
-                    ? _buildDayShiftProfessionLabels()
-                    : _buildNightShiftProfessionLabels(),
-              ),
+                  child: Column(
+                    children: _currentTabIndex == 0 
+                        ? _buildDayShiftProfessionLabels()
+                        : _buildNightShiftProfessionLabels(),
+                  ),
+                ),
+                // Calendar grid for current shift
+                Expanded(
+                  child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
+                ),
+              ],
             ),
-            // Calendar grid for current shift
-            Expanded(
-              child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1288,40 +1437,40 @@ class _WeekViewState extends State<WeekView> {
     return RepaintBoundary(
       key: ValueKey('calendar-grid-$shiftTitle-${widget.weekNumber}'),
       child: Stack(
-        children: [
-          // Grid background
+      children: [
+        // Grid background
           RepaintBoundary(
             key: ValueKey('grid-bg-$shiftTitle'),
             child: Column(
-              children: List.generate(totalRows, (row) => 
-                Container(
-                  height: rowHeight,
-                  child: Row(
-                    children: List.generate(7, (day) => 
-                      Expanded(
-                        child: DragTarget<Employee>(
-                          onAcceptWithDetails: (details) {
-                            _handleDropToLane(details.data, day, shiftTitle, row);
-                          },
-                          builder: (context, candidateData, rejectedData) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey[200]!, width: 0.5),
-                                color: candidateData.isNotEmpty ? Colors.green.withOpacity(0.3) : null,
-                              ),
-                            );
-                          },
+          children: List.generate(totalRows, (row) => 
+            Container(
+              height: rowHeight,
+              child: Row(
+                children: List.generate(7, (day) => 
+                  Expanded(
+                    child: DragTarget<Employee>(
+                      onAcceptWithDetails: (details) {
+                        _handleDropToLane(details.data, day, shiftTitle, row);
+                      },
+                      builder: (context, candidateData, rejectedData) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[200]!, width: 0.5),
+                            color: candidateData.isNotEmpty ? Colors.green.withOpacity(0.3) : null,
+                          ),
+                        );
+                      },
                         ),
-                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          // Assignment blocks for current shift
-          ..._buildShiftAssignmentBlocks(shiftTitle, dayWidth, rowHeight),
-        ],
+        ),
+        // Assignment blocks for current shift
+        ..._buildShiftAssignmentBlocks(shiftTitle, dayWidth, rowHeight),
+      ],
       ),
     );
   }
@@ -1638,50 +1787,50 @@ class _WeekViewState extends State<WeekView> {
             _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
           }
         },
-        onTap: () {
+                            onTap: () {
           // Simply toggle resize mode - no ugly menu!
-          _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-        },
+                              _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+                            },
         child: isInResizeMode 
           ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
           : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
-      ),
-    );
-  }
-
+                              ),
+                            );
+                          }
+                          
   Widget _buildDraggableBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
     return Draggable<Employee>(
-      data: employee,
-      onDragStarted: () {
-        _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
-      },
-      feedback: Material(
-        child: Container(
-          width: 80,
-          height: 18,
-          decoration: BoxDecoration(
-            color: Colors.grey[600]?.withOpacity(0.8),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Colors.grey[400]!, width: 1),
-          ),
-          child: Center(
-            child: Text(
-              employee.name,
-              style: const TextStyle(
-                fontSize: 10,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-      childWhenDragging: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[400],
-          borderRadius: BorderRadius.circular(4),
-        ),
+                    data: employee,
+                    onDragStarted: () {
+                      _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+                    },
+                    feedback: Material(
+                      child: Container(
+                        width: 80,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[600]?.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.grey[400]!, width: 1),
+                        ),
+                        child: Center(
+                          child: Text(
+                            employee.name,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                    childWhenDragging: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
       ),
       child: _buildBlockContainer(employee),
     );
@@ -1733,7 +1882,7 @@ class _WeekViewState extends State<WeekView> {
       child: AnimatedScale(
         duration: const Duration(milliseconds: 150),
         scale: isInResizeMode ? 1.05 : 1.0,
-        child: Center(
+                    child: Center(
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 200),
             style: TextStyle(
@@ -1741,12 +1890,12 @@ class _WeekViewState extends State<WeekView> {
               color: _getTextColorForCategory(employee.category),
               fontWeight: isInResizeMode ? FontWeight.bold : FontWeight.w600,
             ),
-            child: Text(
-              employee.name,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+                      child: Text(
+                        employee.name,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
         ),
       ),
     );
@@ -1851,13 +2000,13 @@ class _WeekViewState extends State<WeekView> {
       child: Scaffold(
         backgroundColor: const Color(0xFFE0FBFC), // Light cyan background
         body: SafeArea(
-          child: Column(
-            children: [
+        child: Column(
+          children: [
               // Combined week navigation + tabs bar
-              Container(
+          Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.all(2), // Reduced from 4
-                decoration: BoxDecoration(
+            decoration: BoxDecoration(
                   color: const Color(0xFF253237), // Gunmetal
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                 ),
@@ -1892,7 +2041,7 @@ class _WeekViewState extends State<WeekView> {
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+              color: Colors.white,
                           ),
                         ),
                       ),
@@ -1920,8 +2069,8 @@ class _WeekViewState extends State<WeekView> {
                     ),
                     // Day/Night shift tabs
                     Expanded(
-                      child: Row(
-                        children: [
+            child: Row(
+              children: [
                           // Day shift tab
                           Expanded(
                             child: GestureDetector(
@@ -1992,7 +2141,7 @@ class _WeekViewState extends State<WeekView> {
               ),
               
               // Compact day header
-              Container(
+                Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // Reduced margins
                 decoration: BoxDecoration(
@@ -2003,56 +2152,56 @@ class _WeekViewState extends State<WeekView> {
                   children: [
                     SizedBox(
                       width: 32, // Reduced from 44
-                      child: IconButton(
+                  child: IconButton(
                         icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
-                        onPressed: _showProfessionEditDialog,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: _buildDayHeaders(dates),
-                      ),
-                    ),
-                  ],
+                    onPressed: _showProfessionEditDialog,
+                    padding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
-              
+                Expanded(
+                  child: Row(
+                    children: _buildDayHeaders(dates),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
               // Calendar section with dynamic height - no top margin
               Container(
                 height: _calculateCalendarHeight(),
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No top margin
-                child: _buildUnifiedShiftView(shiftTitles),
-              ),
+              child: _buildUnifiedShiftView(shiftTitles),
+          ),
 
-              // Show workers button when section is hidden
-              if (!_showWorkerSection) Container(
+          // Show workers button when section is hidden
+          if (!_showWorkerSection) Container(
                 height: 28, // Reduced from 32
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
-                decoration: BoxDecoration(
+            decoration: BoxDecoration(
                   color: const Color(0xFFC2DFE3), // Light blue
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
-                ),
-                child: Center(
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _showWorkerSection = true),
+            ),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: () => setState(() => _showWorkerSection = true),
                     icon: const Icon(Icons.visibility, size: 12), // Smaller icon
                     label: const Text('Show Workers', style: TextStyle(fontSize: 10)), // Smaller text
-                    style: TextButton.styleFrom(
+                style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFF253237), // Gunmetal text
                       padding: EdgeInsets.zero, // Remove padding
                       minimumSize: const Size(0, 0), // Remove minimum size
-                    ),
-                  ),
                 ),
               ),
+            ),
+          ),
 
               // Worker list - takes remaining space
               if (_showWorkerSection) Expanded(
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
-                  decoration: BoxDecoration(
-                    color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white,
                     border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
                   ),
                   child: Padding(
@@ -2060,10 +2209,10 @@ class _WeekViewState extends State<WeekView> {
                     child: _buildFullWidthEmployeeGrid(),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
+                      ),
+                    ],
+                  ),
+                ),
       ),
     );
   }
@@ -2131,7 +2280,7 @@ class _WeekViewState extends State<WeekView> {
 
 
 
-  List<Widget> _buildDayHeaders(List<DateTime> dates) {
+    List<Widget> _buildDayHeaders(List<DateTime> dates) {
     const List<String> weekdays = ['MA', 'TI', 'KE', 'TO', 'PE', 'LA', 'SU'];
     return dates.asMap().entries.map((entry) {
       final index = entry.key;

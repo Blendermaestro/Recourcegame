@@ -41,8 +41,9 @@ class _YearViewState extends State<YearView> {
     _pageController = PageController(initialPage: widget.initialWeek - 1);
     _loadEmployees();
     _loadAssignments();
+    _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
   }
-
+  
   @override
   void dispose() {
     _pageController.dispose();
@@ -92,6 +93,73 @@ class _YearViewState extends State<YearView> {
       }
     } else {
       print('Year View - No assignments found in SharedPreferences');
+    }
+  }
+
+  Future<void> _loadProfessionSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load profession settings - using same keys as WeekView
+      final dayProfessionsJson = prefs.getString('week_day_professions');
+      final nightProfessionsJson = prefs.getString('week_night_professions');
+      final dayRowsJson = prefs.getString('week_day_rows');
+      final nightRowsJson = prefs.getString('week_night_rows');
+      
+      if (dayProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayProfessionsJson);
+        _weekDayShiftProfessions.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekDayShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      if (nightProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightProfessionsJson);
+        _weekNightShiftProfessions.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekNightShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      if (dayRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayRowsJson);
+        _weekDayShiftRows.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekDayShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      if (nightRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightRowsJson);
+        _weekNightShiftRows.clear();
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekNightShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      print('Year View: Loaded profession settings from SharedPreferences');
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Year View: Error loading profession settings: $e');
     }
   }
 
@@ -351,7 +419,7 @@ class _YearViewState extends State<YearView> {
                 Container(width: 60), // Profession space
                 Expanded(
                   child: Center(
-                    child: Text(
+                      child: Text(
                       shiftTitle,
                       style: const TextStyle(
                         fontSize: 11, 
@@ -391,9 +459,9 @@ class _YearViewState extends State<YearView> {
                                     decoration: BoxDecoration(
                                       border: Border.all(color: Colors.grey[200]!, width: 0.5),
                                     ),
-                                  ),
-                                ),
-                              ),
+                      ),
+                    ),
+                  ),
                             ),
                           ),
                         ),
@@ -464,9 +532,7 @@ class _YearViewState extends State<YearView> {
     List<Widget> blocks = [];
     Set<String> processedAssignments = {};
     
-    // DEBUG: Print assignment keys to see what's available
-    print('Year View Debug - Week $weekNumber, Shift: $shiftTitle');
-    print('Available assignments: ${_assignments.keys.where((k) => k.startsWith('$weekNumber-')).toList()}');
+    // Find assignments for this specific week and shift
     
     for (final entry in _assignments.entries) {
       final key = entry.key;
@@ -492,7 +558,7 @@ class _YearViewState extends State<YearView> {
               final startDay = int.tryParse(remainingParts[0]) ?? 0;
               final lane = int.tryParse(remainingParts[1]) ?? 0;
               
-              print('Found assignment: $key -> ${entry.value.name} (day: $startDay, lane: $lane)');
+                             // Found assignment: $key -> ${entry.value.name} (day: $startDay, lane: $lane)
               
               // Find contiguous assignment duration
               int duration = 1;
@@ -522,7 +588,6 @@ class _YearViewState extends State<YearView> {
       }
     }
     
-    print('Created ${blocks.length} blocks for $shiftTitle');
     return blocks;
   }
 
@@ -567,7 +632,7 @@ class _YearViewState extends State<YearView> {
             Container(
               height: 40,
               margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
                 color: const Color(0xFF253237),
                 border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
               ),
