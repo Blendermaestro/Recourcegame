@@ -652,7 +652,7 @@ class _YearViewState extends State<YearView> {
     return Container(
       margin: const EdgeInsets.all(0.5),
       decoration: BoxDecoration(
-        color: _getProfessionColor(employee.role), // 🔥 SAME COLORS AS WEEK VIEW!
+        color: _getCategoryColor(employee.category), // 🔥 EXACT SAME COLORS AS WEEK VIEW!
         borderRadius: BorderRadius.circular(3),
         border: Border.all(color: Colors.grey[400]!, width: 0.5),
         boxShadow: [
@@ -666,9 +666,9 @@ class _YearViewState extends State<YearView> {
       child: Center(
         child: Text(
           employee.name,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 9, // Smaller for year view
-            color: Colors.white, // White text for better contrast
+            color: _getTextColorForCategory(employee.category), // 🔥 SAME TEXT COLORS!
             fontWeight: FontWeight.w600,
           ),
           textAlign: TextAlign.center,
@@ -678,20 +678,28 @@ class _YearViewState extends State<YearView> {
     );
   }
 
-  // 🔥 SAME PROFESSION COLORS AS WEEK VIEW!
-  Color _getProfessionColor(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj: return Colors.red[400]!;
-      case EmployeeRole.varu1: return Colors.blue[400]!;
-      case EmployeeRole.varu2: return Colors.green[400]!;
-      case EmployeeRole.varu3: return Colors.orange[400]!;
-      case EmployeeRole.varu4: return Colors.purple[400]!;
-      case EmployeeRole.pasta1: return Colors.teal[400]!;
-      case EmployeeRole.pasta2: return Colors.indigo[400]!;
-      case EmployeeRole.ict: return Colors.brown[400]!;
-      case EmployeeRole.tarvike: return Colors.pink[400]!;
-      case EmployeeRole.pora: return Colors.amber[400]!;
-      case EmployeeRole.huolto: return Colors.lime[400]!;
+  // 🔥 EXACT SAME CATEGORY COLORS AS WEEK VIEW!
+  Color _getCategoryColor(EmployeeCategory category) {
+    switch (category) {
+      case EmployeeCategory.ab:
+        return const Color(0xFFE0FBFC); // Light cyan
+      case EmployeeCategory.cd:
+        return const Color(0xFFC2DFE3); // Light blue
+      case EmployeeCategory.huolto:
+        return const Color(0xFF9DB4C0); // Cadet gray
+      case EmployeeCategory.sijainen:
+        return const Color(0xFF5C6B73); // Payne's gray
+    }
+  }
+
+  Color _getTextColorForCategory(EmployeeCategory category) {
+    switch (category) {
+      case EmployeeCategory.ab:
+      case EmployeeCategory.cd:
+        return const Color(0xFF253237); // Dark text on light backgrounds
+      case EmployeeCategory.huolto:
+      case EmployeeCategory.sijainen:
+        return Colors.white; // White text on darker backgrounds
     }
   }
 

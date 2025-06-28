@@ -2448,15 +2448,25 @@ class _WeekViewState extends State<WeekView> {
   List<Widget> _buildResizeHandles(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
     final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
     
-    // Find the span of this block
+    // 🔥 FIND THE SPAN USING PROFESSION-BASED KEYS!
     final thisBlockKeys = <String>[];
-    for (int day = blockStartDay; day < 7; day++) {
-      final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane';
-      if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-        thisBlockKeys.add(key);
-      } else {
-        break;
-      }
+    
+    // Find this employee's assignment keys for this shift
+    final employeeKeys = _assignments.entries
+        .where((entry) => 
+            entry.value.id == employee.id && 
+            entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
+        .map((e) => e.key)
+        .toList();
+    
+    if (employeeKeys.isNotEmpty) {
+      // Sort by day to get the span
+      employeeKeys.sort((a, b) {
+        final dayA = int.tryParse(a.split('-')[2]) ?? 0;
+        final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+        return dayA.compareTo(dayB);
+      });
+      thisBlockKeys.addAll(employeeKeys);
     }
     
     if (thisBlockKeys.isEmpty) return [];
