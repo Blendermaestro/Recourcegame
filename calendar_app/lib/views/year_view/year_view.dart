@@ -333,13 +333,13 @@ class _YearViewState extends State<YearView> {
         children: [
           // Profession header space
           Container(
-            width: 60, // 🔥 BACK TO ORIGINAL SIZE!
+            width: 50, // 🔥 MORE COMPACT!
             child: const Center(
               child: Text(
                 'ROLE',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 10, // 🔥 BACK TO ORIGINAL SIZE!
+                  fontSize: 9, // 🔥 MORE COMPACT!
                   color: Color(0xFF253237),
                 ),
               ),
@@ -386,8 +386,8 @@ class _YearViewState extends State<YearView> {
   }
 
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
-    const rowHeight = 20.0; // 🔥 BACK TO ORIGINAL SIZE!
-    final dayWidth = (MediaQuery.of(context).size.width - 60 - 16) / 7; // 🔥 BACK TO ORIGINAL!
+    const rowHeight = 16.0; // 🔥 COMPACT FOR YEAR VIEW!
+    final dayWidth = (MediaQuery.of(context).size.width - 50 - 12) / 7; // 🔥 MORE COMPACT!
     
     final professions = isDayShift 
         ? _getDayShiftProfessions(weekNumber)
@@ -412,21 +412,21 @@ class _YearViewState extends State<YearView> {
       ),
       child: Column(
         children: [
-          // Shift title
+          // Shift title - MATCH WEEK VIEW COLORS!
           Container(
-            height: 24, // 🔥 BACK TO ORIGINAL SIZE!
-            color: isDayShift ? Colors.grey[200] : Colors.grey[300],
+            height: 20, // 🔥 MORE COMPACT!
+            color: const Color(0xFF5C6B73), // 🔥 MATCH WEEK VIEW ACTIVE TAB COLOR!
             child: Row(
               children: [
-                Container(width: 60), // 🔥 BACK TO ORIGINAL SIZE!
+                Container(width: 50), // 🔥 MORE COMPACT!
                 Expanded(
                   child: Center(
                       child: Text(
                       shiftTitle,
                       style: const TextStyle(
-                        fontSize: 11, // 🔥 BACK TO ORIGINAL SIZE!
+                        fontSize: 10, // 🔥 MORE COMPACT!
                         fontWeight: FontWeight.bold, 
-                        color: Colors.black87
+                        color: Colors.white // 🔥 WHITE TEXT ON DARK BACKGROUND!
                       ),
                     ),
                   ),
@@ -440,7 +440,7 @@ class _YearViewState extends State<YearView> {
               children: [
                 // Profession labels column
                 Container(
-                  width: 60, // 🔥 BACK TO ORIGINAL SIZE!
+                  width: 50, // 🔥 MORE COMPACT!
                   child: Column(
                     children: _buildProfessionLabels(visibleProfessions, rows, rowHeight),
                   ),
@@ -451,22 +451,22 @@ class _YearViewState extends State<YearView> {
                     children: [
                       // Grid background
                       Column(
-                        children: List.generate(totalRows, (row) => 
-                          Container(
-                            height: rowHeight,
-                            child: Row(
-                              children: List.generate(7, (day) => 
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey[200]!, width: 0.5), // 🔥 BACK TO ORIGINAL!
-                                    ),
+                                              children: List.generate(totalRows, (row) => 
+                        Container(
+                          height: rowHeight,
+                          child: Row(
+                            children: List.generate(7, (day) => 
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey[200]!, width: 0.3), // 🔥 THINNER BORDERS!
                                   ),
                                 ),
                               ),
                             ),
                           ),
                         ),
+                      ),
                       ),
                       // Assignment blocks
                       ..._buildShiftAssignmentBlocks(weekNumber, shiftTitle, dayWidth, rowHeight),
@@ -494,16 +494,16 @@ class _YearViewState extends State<YearView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: Colors.grey[300]!, width: 0.5), // 🔥 BACK TO ORIGINAL!
+                bottom: BorderSide(color: Colors.grey[300]!, width: 0.5),
               ),
               color: rowIndex % 2 == 0 ? Colors.grey[100] : Colors.grey[50],
             ),
             child: Text(
-              rowIndex == 0 ? _getRoleDisplayName(profession) : '${rowIndex + 1}',
+              _getFullProfessionName(profession, rowIndex), // 🔥 SHOW FULL PROFESSION NAMES!
               style: TextStyle(
-                fontSize: 8, // 🔥 KEEP FONT READABLE!
+                fontSize: 7, // 🔥 SMALLER TO FIT FULL NAMES!
                 fontWeight: FontWeight.w600,
-                color: rowIndex == 0 ? Colors.black87 : Colors.black54,
+                color: Colors.black87,
               ),
             ),
           ),
@@ -527,6 +527,33 @@ class _YearViewState extends State<YearView> {
       case EmployeeRole.tarvike: return 'TARVIKE';
       case EmployeeRole.pora: return 'PORA';
       case EmployeeRole.huolto: return 'HUOLTO';
+    }
+  }
+
+  // 🔥 NEW: Generate full profession names with row numbers
+  String _getFullProfessionName(EmployeeRole role, int rowIndex) {
+    final baseNames = {
+      EmployeeRole.tj: 'TJ',
+      EmployeeRole.varu1: 'VARU',
+      EmployeeRole.varu2: 'VARU',
+      EmployeeRole.varu3: 'VARU',
+      EmployeeRole.varu4: 'VARU',
+      EmployeeRole.pasta1: 'PASTA',
+      EmployeeRole.pasta2: 'PASTA',
+      EmployeeRole.ict: 'ICT',
+      EmployeeRole.tarvike: 'TARVIKE',
+      EmployeeRole.pora: 'PORA',
+      EmployeeRole.huolto: 'HUOLTO',
+    };
+    
+    final baseName = baseNames[role] ?? role.name.toUpperCase();
+    
+    // For single-character bases, add the row number
+    if (baseName == 'TJ' || baseName == 'ICT' || baseName == 'TARVIKE' || baseName == 'PORA' || baseName == 'HUOLTO') {
+      return rowIndex == 0 ? baseName : '$baseName${rowIndex + 1}';
+    } else {
+      // For VARU and PASTA, always show the number
+      return '$baseName${rowIndex + 1}';
     }
   }
 
@@ -635,8 +662,8 @@ class _YearViewState extends State<YearView> {
             Positioned(
               left: startDay * dayWidth,
               top: absoluteLane * rowHeight,
-              width: (dayWidth * duration) - 1, // 🔥 BACK TO ORIGINAL GAP!
-              height: rowHeight - 1, // 🔥 BACK TO ORIGINAL GAP!
+              width: (dayWidth * duration) - 0.5, // 🔥 SMALLER GAP FOR COMPACT VIEW!
+              height: rowHeight - 0.5, // 🔥 SMALLER GAP FOR COMPACT VIEW!
               child: _buildAssignmentBlock(entry.value),
             ),
           );
@@ -652,16 +679,16 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildAssignmentBlock(Employee employee) {
     return Container(
-      margin: const EdgeInsets.all(0.5),
+      margin: const EdgeInsets.all(0.3), // 🔥 SMALLER MARGINS FOR COMPACT VIEW!
       decoration: BoxDecoration(
         color: _getCategoryColor(employee.category), // 🔥 EXACT SAME COLORS AS WEEK VIEW!
-        borderRadius: BorderRadius.circular(3),
-        border: Border.all(color: Colors.grey[400]!, width: 0.5),
+        borderRadius: BorderRadius.circular(2), // 🔥 SMALLER RADIUS FOR COMPACT!
+        border: Border.all(color: Colors.grey[400]!, width: 0.3), // 🔥 THINNER BORDER!
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
-            blurRadius: 1,
-            offset: const Offset(0.5, 0.5),
+            blurRadius: 0.5, // 🔥 SMALLER SHADOW!
+            offset: const Offset(0.3, 0.3),
           ),
         ],
       ),
@@ -669,7 +696,7 @@ class _YearViewState extends State<YearView> {
         child: Text(
           employee.name,
           style: TextStyle(
-            fontSize: 9, // Smaller for year view
+            fontSize: 8, // 🔥 SMALLER FOR COMPACT VIEW!
             color: _getTextColorForCategory(employee.category), // 🔥 SAME TEXT COLORS!
             fontWeight: FontWeight.w600,
           ),
