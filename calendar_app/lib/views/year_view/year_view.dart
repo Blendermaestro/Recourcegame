@@ -331,13 +331,13 @@ class _YearViewState extends State<YearView> {
         children: [
           // Profession header space
           Container(
-            width: 60,
+            width: 50, // 🔥 MATCH SMALLER WIDTH!
             child: const Center(
               child: Text(
                 'ROLE',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 10,
+                  fontSize: 9, // 🔥 SMALLER FONT!
                   color: Color(0xFF253237),
                 ),
               ),
@@ -384,8 +384,8 @@ class _YearViewState extends State<YearView> {
   }
 
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
-    const rowHeight = 20.0; // Smaller for year view
-    final dayWidth = (MediaQuery.of(context).size.width - 60 - 16) / 7; // 60px professions + margins
+    const rowHeight = 16.0; // 🔥 EVEN SMALLER FOR COMPACT VIEW!
+    final dayWidth = (MediaQuery.of(context).size.width - 50 - 8) / 7; // 🔥 SMALLER MARGINS!
     
     final professions = isDayShift 
         ? _getDayShiftProfessions(weekNumber)
@@ -394,15 +394,10 @@ class _YearViewState extends State<YearView> {
         ? _getDayShiftRows(weekNumber)
         : _getNightShiftRows(weekNumber);
     
-    // Get visible professions in order
-    final visibleProfessions = EmployeeRole.values
-        .where((role) => professions[role] == true)
-        .toList();
-    
-    int totalRows = 0;
-    for (final profession in visibleProfessions) {
-      totalRows += rows[profession] ?? 1;
-    }
+    // 🔥 DYNAMIC LAYOUT - ONLY SHOW ROWS WITH ASSIGNMENTS OR MINIMUM NEEDED!
+    final dynamicLayout = _calculateDynamicLayout(weekNumber, shiftTitle, professions, rows);
+    final totalRows = dynamicLayout['totalRows'] as int;
+    final visibleProfessions = dynamicLayout['visibleProfessions'] as List<EmployeeRole>;
     
     return Container(
       decoration: BoxDecoration(
@@ -412,17 +407,17 @@ class _YearViewState extends State<YearView> {
         children: [
           // Shift title
           Container(
-            height: 24,
+            height: 20, // 🔥 SMALLER HEADER!
             color: isDayShift ? Colors.grey[200] : Colors.grey[300],
             child: Row(
               children: [
-                Container(width: 60), // Profession space
+                Container(width: 50), // 🔥 SMALLER PROFESSION SPACE!
                 Expanded(
                   child: Center(
                       child: Text(
                       shiftTitle,
                       style: const TextStyle(
-                        fontSize: 11, 
+                        fontSize: 10, // 🔥 SMALLER FONT!
                         fontWeight: FontWeight.bold, 
                         color: Colors.black87
                       ),
@@ -438,9 +433,9 @@ class _YearViewState extends State<YearView> {
               children: [
                 // Profession labels column
                 Container(
-                  width: 60,
+                  width: 50, // 🔥 SMALLER WIDTH!
                   child: Column(
-                    children: _buildProfessionLabels(visibleProfessions, rows, rowHeight),
+                    children: _buildDynamicProfessionLabels(dynamicLayout, rowHeight),
                   ),
                 ),
                 // Days grid with assignment blocks
@@ -457,11 +452,11 @@ class _YearViewState extends State<YearView> {
                                 Expanded(
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey[200]!, width: 0.5),
+                                      border: Border.all(color: Colors.grey[200]!, width: 0.3), // 🔥 THINNER BORDERS!
                                     ),
-                      ),
-                    ),
-                  ),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -528,74 +523,251 @@ class _YearViewState extends State<YearView> {
     }
   }
 
+  // 🔥 DYNAMIC LAYOUT CALCULATION - NO WASTED SPACE!
+  Map<String, dynamic> _calculateDynamicLayout(int weekNumber, String shiftTitle, Map<EmployeeRole, bool> professions, Map<EmployeeRole, int> rows) {
+    final List<EmployeeRole> visibleProfessions = [];
+    final Map<EmployeeRole, int> actualRowsNeeded = {};
+    int totalRows = 0;
+    
+    // Check which professions actually have assignments or are needed
+    for (final profession in EmployeeRole.values) {
+      if (professions[profession] != true) continue; // Skip invisible professions
+      
+      // Check if this profession has any assignments in this shift
+      bool hasAssignments = false;
+      int maxRowWithAssignment = -1;
+      
+      for (final entry in _assignments.entries) {
+        final parsed = _parseAssignmentKey(entry.key);
+        if (parsed != null && 
+            parsed['weekNumber'] == weekNumber && 
+            parsed['shiftTitle'] == shiftTitle && 
+            parsed['profession'] == profession) {
+          hasAssignments = true;
+          final professionRow = parsed['professionRow'] as int;
+          maxRowWithAssignment = maxRowWithAssignment < professionRow ? professionRow : maxRowWithAssignment;
+        }
+      }
+      
+      if (hasAssignments) {
+        visibleProfessions.add(profession);
+        // Show up to the highest row with an assignment + 1 (but at least 1 row)
+        final neededRows = (maxRowWithAssignment + 1).clamp(1, rows[profession] ?? 1);
+        actualRowsNeeded[profession] = neededRows;
+        totalRows += neededRows;
+      } else {
+        // For professions with no assignments, only show if they're critical roles
+        if (_isCriticalRole(profession)) {
+          visibleProfessions.add(profession);
+          actualRowsNeeded[profession] = 1; // Just show 1 row for critical roles
+          totalRows += 1;
+        }
+      }
+    }
+    
+    return {
+      'visibleProfessions': visibleProfessions,
+      'actualRowsNeeded': actualRowsNeeded,
+      'totalRows': totalRows,
+    };
+  }
+  
+  // Define which roles are always visible even without assignments
+  bool _isCriticalRole(EmployeeRole role) {
+    switch (role) {
+      case EmployeeRole.tj:
+      case EmployeeRole.varu1:
+      case EmployeeRole.varu2:
+        return true; // Always show TJ and main VARU roles
+      default:
+        return false;
+    }
+  }
+  
+  List<Widget> _buildDynamicProfessionLabels(Map<String, dynamic> layout, double rowHeight) {
+    final List<Widget> labels = [];
+    final visibleProfessions = layout['visibleProfessions'] as List<EmployeeRole>;
+    final actualRowsNeeded = layout['actualRowsNeeded'] as Map<EmployeeRole, int>;
+    
+    for (final profession in visibleProfessions) {
+      final professionRows = actualRowsNeeded[profession] ?? 1;
+      
+      for (int rowIndex = 0; rowIndex < professionRows; rowIndex++) {
+        labels.add(
+          Container(
+            height: rowHeight,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[300]!, width: 0.3), // 🔥 THINNER BORDERS!
+              ),
+              color: rowIndex % 2 == 0 ? Colors.grey[100] : Colors.grey[50],
+            ),
+            child: Text(
+              rowIndex == 0 ? _getRoleDisplayName(profession) : '${rowIndex + 1}',
+              style: TextStyle(
+                fontSize: 7, // 🔥 SMALLER FONT!
+                fontWeight: FontWeight.w600,
+                color: rowIndex == 0 ? Colors.black87 : Colors.black54,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    
+    return labels;
+  }
+
+  // 🔥 PROFESSION-BASED STORAGE SYSTEM - NO MORE LANE MISALIGNMENT! 🔥
+  
+  /// Convert profession + profession row to absolute lane
+  /// Returns -1 if profession is not visible or row is invalid
+  int _getProfessionToAbsoluteLane(EmployeeRole profession, int professionRow, String shiftTitle, Map<EmployeeRole, int> rows, int weekNumber) {
+    final isDay = !shiftTitle.toLowerCase().contains('yö');
+    
+    // Get profession visibility for this specific week
+    final dayProfessions = _weekDayShiftProfessions[weekNumber] ?? _getDefaultDayShiftProfessions();
+    final nightProfessions = _weekNightShiftProfessions[weekNumber] ?? _getDefaultNightShiftProfessions();
+    
+    final visibleProfessions = EmployeeRole.values
+        .where((role) => isDay ? dayProfessions[role] == true : nightProfessions[role] == true)
+        .toList();
+    
+    int currentLane = 0;
+    for (final visibleProfession in visibleProfessions) {
+      if (visibleProfession == profession) {
+        final maxRows = rows[profession] ?? 1;
+        if (professionRow >= 0 && professionRow < maxRows) {
+          return currentLane + professionRow;
+        }
+        return -1; // Invalid row
+      }
+      
+      final professionRows = rows[visibleProfession] ?? 1;
+      currentLane += professionRows;
+    }
+    
+    return -1; // Profession not visible
+  }
+  
+  /// Parse profession-based assignment key
+  /// Returns null if key format is invalid
+  Map<String, dynamic>? _parseAssignmentKey(String key) {
+    final parts = key.split('-');
+    if (parts.length != 5) return null; // Invalid format
+    
+    try {
+      final weekNumber = int.parse(parts[0]);
+      final shiftTitle = parts[1];
+      final day = int.parse(parts[2]);
+      final profession = EmployeeRole.values.byName(parts[3]);
+      final professionRow = int.parse(parts[4]);
+      
+      return {
+        'weekNumber': weekNumber,
+        'shiftTitle': shiftTitle,
+        'day': day,
+        'profession': profession,
+        'professionRow': professionRow,
+      };
+    } catch (e) {
+      return null; // Invalid values
+    }
+  }
+  
+  /// Generate new profession-based assignment key
+  String _generateAssignmentKey(int weekNumber, String shiftTitle, int day, EmployeeRole profession, int professionRow) {
+    return '$weekNumber-$shiftTitle-$day-${profession.name}-$professionRow';
+  }
+
   List<Widget> _buildShiftAssignmentBlocks(int weekNumber, String shiftTitle, double dayWidth, double rowHeight) {
     List<Widget> blocks = [];
     Set<String> processedAssignments = {};
     
-    // Find assignments for this specific week and shift
+    // Get profession rows for this shift and week
+    final isDay = !shiftTitle.toLowerCase().contains('yö');
+    final professions = isDay 
+        ? _getDayShiftProfessions(weekNumber)
+        : _getNightShiftProfessions(weekNumber);
+    final rows = isDay 
+        ? (_weekDayShiftRows[weekNumber] ?? _getDefaultDayShiftRows())
+        : (_weekNightShiftRows[weekNumber] ?? _getDefaultNightShiftRows());
+    
+    // Get dynamic layout for positioning
+    final dynamicLayout = _calculateDynamicLayout(weekNumber, shiftTitle, professions, rows);
     
     for (final entry in _assignments.entries) {
-      final key = entry.key;
-      
-      // Parse key: should be like "1-A / Päivävuoro-2-1" (week-shift-day-lane)  
-      // But shift title has "/" and spaces, so we need to be more careful
-      if (key.startsWith('$weekNumber-') && key.contains(shiftTitle) && !processedAssignments.contains(key)) {
-        // Split carefully - the shift title contains spaces and "/"
-        final parts = key.split('-');
-        if (parts.length >= 4) {
-          final weekPart = parts[0];
+      if (!processedAssignments.contains(entry.key)) {
+        final parsed = _parseAssignmentKey(entry.key);
+        if (parsed != null && 
+            parsed['weekNumber'] == weekNumber && 
+            parsed['shiftTitle'] == shiftTitle) {
           
-          // Find where shift title ends and day begins  
-          // Key format: week-shiftTitle-day-lane
-          // But shiftTitle can have spaces/slashes
-          final keyWithoutWeek = key.substring(weekPart.length + 1); // Remove "week-"
+          final startDay = parsed['day'] as int;
+          final profession = parsed['profession'] as EmployeeRole;
+          final professionRow = parsed['professionRow'] as int;
           
-          if (keyWithoutWeek.startsWith(shiftTitle)) {
-            final afterShift = keyWithoutWeek.substring(shiftTitle.length + 1); // Remove "shiftTitle-"
-            final remainingParts = afterShift.split('-');
-            
-            if (remainingParts.length >= 2) {
-              final startDay = int.tryParse(remainingParts[0]) ?? 0;
-              final lane = int.tryParse(remainingParts[1]) ?? 0;
-              
-                             // Found assignment: $key -> ${entry.value.name} (day: $startDay, lane: $lane)
-              
-              // Find contiguous assignment duration
-              int duration = 1;
-              for (int day = startDay + 1; day < 7; day++) {
-                final nextKey = '$weekNumber-$shiftTitle-$day-$lane';
-                if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
-                  duration++;
-                  processedAssignments.add(nextKey);
-                } else {
-                  break;
-                }
-              }
-              
-              blocks.add(
-                Positioned(
-                  left: startDay * dayWidth,
-                  top: lane * rowHeight,
-                  width: (dayWidth * duration) - 1,
-                  height: rowHeight - 1,
-                  child: _buildAssignmentBlock(entry.value),
-                ),
-              );
-              processedAssignments.add(key);
+          // 🔥 CONVERT PROFESSION + ROW TO DYNAMIC LANE FOR RENDERING
+          final absoluteLane = _getDynamicAbsoluteLane(profession, professionRow, dynamicLayout);
+          if (absoluteLane == -1) continue; // Profession not visible or invalid row
+          
+          // Find contiguous assignment duration using profession-based keys
+          int duration = 1;
+          for (int day = startDay + 1; day < 7; day++) {
+            final nextKey = _generateAssignmentKey(weekNumber, shiftTitle, day, profession, professionRow);
+            if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
+              duration++;
+              processedAssignments.add(nextKey);
+            } else {
+              break;
             }
           }
+          
+          blocks.add(
+            Positioned(
+              left: startDay * dayWidth,
+              top: absoluteLane * rowHeight,
+              width: (dayWidth * duration) - 0.5, // 🔥 SMALLER GAP!
+              height: rowHeight - 0.5, // 🔥 SMALLER GAP!
+              child: _buildAssignmentBlock(entry.value),
+            ),
+          );
+          processedAssignments.add(entry.key);
         }
       }
     }
     
     return blocks;
   }
+  
+  // 🔥 GET ABSOLUTE LANE BASED ON DYNAMIC LAYOUT!
+  int _getDynamicAbsoluteLane(EmployeeRole profession, int professionRow, Map<String, dynamic> layout) {
+    final visibleProfessions = layout['visibleProfessions'] as List<EmployeeRole>;
+    final actualRowsNeeded = layout['actualRowsNeeded'] as Map<EmployeeRole, int>;
+    
+    int currentLane = 0;
+    for (final visibleProfession in visibleProfessions) {
+      if (visibleProfession == profession) {
+        final maxRows = actualRowsNeeded[profession] ?? 1;
+        if (professionRow >= 0 && professionRow < maxRows) {
+          return currentLane + professionRow;
+        }
+        return -1; // Invalid row
+      }
+      
+      final professionRows = actualRowsNeeded[visibleProfession] ?? 1;
+      currentLane += professionRows;
+    }
+    
+    return -1; // Profession not visible
+  }
 
   Widget _buildAssignmentBlock(Employee employee) {
     return Container(
       margin: const EdgeInsets.all(0.5),
       decoration: BoxDecoration(
-        color: _getCategoryColor(employee.category),
+        color: _getProfessionColor(employee.role), // 🔥 SAME COLORS AS WEEK VIEW!
         borderRadius: BorderRadius.circular(3),
         border: Border.all(color: Colors.grey[400]!, width: 0.5),
         boxShadow: [
@@ -609,9 +781,9 @@ class _YearViewState extends State<YearView> {
       child: Center(
         child: Text(
           employee.name,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 9, // Smaller for year view
-            color: _getTextColorForCategory(employee.category),
+            color: Colors.white, // White text for better contrast
             fontWeight: FontWeight.w600,
           ),
           textAlign: TextAlign.center,
@@ -619,6 +791,23 @@ class _YearViewState extends State<YearView> {
         ),
       ),
     );
+  }
+
+  // 🔥 SAME PROFESSION COLORS AS WEEK VIEW!
+  Color _getProfessionColor(EmployeeRole role) {
+    switch (role) {
+      case EmployeeRole.tj: return Colors.red[400]!;
+      case EmployeeRole.varu1: return Colors.blue[400]!;
+      case EmployeeRole.varu2: return Colors.green[400]!;
+      case EmployeeRole.varu3: return Colors.orange[400]!;
+      case EmployeeRole.varu4: return Colors.purple[400]!;
+      case EmployeeRole.pasta1: return Colors.teal[400]!;
+      case EmployeeRole.pasta2: return Colors.indigo[400]!;
+      case EmployeeRole.ict: return Colors.brown[400]!;
+      case EmployeeRole.tarvike: return Colors.pink[400]!;
+      case EmployeeRole.pora: return Colors.amber[400]!;
+      case EmployeeRole.huolto: return Colors.lime[400]!;
+    }
   }
 
   @override

@@ -359,12 +359,7 @@ class _ShiftSectionState extends State<ShiftSection> {
                                           if (localPosition.dx < 0 || localPosition.dx > constraints.maxWidth ||
                                               localPosition.dy < 0 || localPosition.dy > totalRows * rowHeight) {
                                             widget.onAssignmentRemoved(renderableBlock.employee);
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('${renderableBlock.employee.name} removed from calendar'),
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
+                                            // NO MORE ANNOYING NOTIFICATIONS! 🎉
                                           }
                                         },
                                         feedback: Material(
