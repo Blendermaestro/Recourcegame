@@ -1902,14 +1902,10 @@ class _WeekViewState extends State<WeekView> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onLongPress: () {
-          if (!isInResizeMode) {
-            _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-          }
+          // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
+          _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+          HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
         },
-                            onTap: () {
-          // Simply toggle resize mode - no ugly menu!
-                              _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-                            },
         child: isInResizeMode 
           ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
           : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
