@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 // Platform-specific import removed - will use conditional web APIs
 
 class DragState {
@@ -569,7 +570,7 @@ class _WeekViewState extends State<WeekView> {
     });
   }
 
-  void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
+  void _handleResizeStart(DragStartDetails details, Employee employee, String shiftTitle, bool isLeftResize) {
     final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
     
     // Get current employee span for originalStartDay and originalDuration
@@ -588,72 +589,56 @@ class _WeekViewState extends State<WeekView> {
     final originalEndDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.last.split('-')[2]) ?? 0 : 0;
     final originalDuration = originalEndDay - originalStartDay + 1;
     
-    // Set the drag state for visual feedback
+    // Initialize resize mode with smooth transition
     setState(() {
+      _resizeModeBlockKey = blockKey;
       _dragStates ??= {};
       _dragStates![blockKey] = DragState(
         startX: details.globalPosition.dx,
         currentX: details.globalPosition.dx,
-        isLeftResize: true,
+        isLeftResize: isLeftResize,
         originalStartDay: originalStartDay,
         originalDuration: originalDuration,
       );
     });
     
-    // Calculate new resize position
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox != null) {
-      final localPosition = renderBox.globalToLocal(details.globalPosition);
-      final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7;
-      final gridLeft = 32; // Profession column width
-      final relativeX = localPosition.dx - gridLeft;
-      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
-      
-      _performResize(employee, shiftTitle, targetDay, true);
+    // Add haptic feedback for that "juicy" feel
+    HapticFeedback.lightImpact();
+  }
+
+  void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
+    final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
+    
+    // Update only the current position for smooth visual feedback
+    final currentDragState = _dragStates?[blockKey];
+    if (currentDragState != null) {
+      setState(() {
+        _dragStates![blockKey] = DragState(
+          startX: currentDragState.startX,
+          currentX: details.globalPosition.dx,
+          isLeftResize: true,
+          originalStartDay: currentDragState.originalStartDay,
+          originalDuration: currentDragState.originalDuration,
+        );
+      });
     }
   }
 
   void _handleRightResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
     final blockKey = '${employee.id}-$shiftTitle-${_getEmployeeLane(employee, shiftTitle)}-${_getEmployeeStartDay(employee, shiftTitle)}';
     
-    // Get current employee span for originalStartDay and originalDuration
-    final currentKeys = _assignments.entries
-        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
-        .map((e) => e.key)
-        .toList();
-    
-    currentKeys.sort((a, b) {
-      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
-      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
-      return dayA.compareTo(dayB);
-    });
-    
-    final originalStartDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.first.split('-')[2]) ?? 0 : 0;
-    final originalEndDay = currentKeys.isNotEmpty ? int.tryParse(currentKeys.last.split('-')[2]) ?? 0 : 0;
-    final originalDuration = originalEndDay - originalStartDay + 1;
-    
-    // Set the drag state for visual feedback
-    setState(() {
-      _dragStates ??= {};
-      _dragStates![blockKey] = DragState(
-        startX: details.globalPosition.dx,
-        currentX: details.globalPosition.dx,
-        isLeftResize: false,
-        originalStartDay: originalStartDay,
-        originalDuration: originalDuration,
-      );
-    });
-    
-    // Calculate new resize position
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox != null) {
-      final localPosition = renderBox.globalToLocal(details.globalPosition);
-      final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7;
-      final gridLeft = 32; // Profession column width
-      final relativeX = localPosition.dx - gridLeft;
-      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
-      
-      _performResize(employee, shiftTitle, targetDay, false);
+    // Update only the current position for smooth visual feedback
+    final currentDragState = _dragStates?[blockKey];
+    if (currentDragState != null) {
+      setState(() {
+        _dragStates![blockKey] = DragState(
+          startX: currentDragState.startX,
+          currentX: details.globalPosition.dx,
+          isLeftResize: false,
+          originalStartDay: currentDragState.originalStartDay,
+          originalDuration: currentDragState.originalDuration,
+        );
+      });
     }
   }
 
@@ -762,7 +747,7 @@ class _WeekViewState extends State<WeekView> {
     final dragState = _dragStates![blockKey];
     
     if (dragState != null) {
-      // Calculate snap-to-grid position
+      // Calculate snap-to-grid position with improved grid detection
       final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7;
       final gridLeft = 40;
       
@@ -776,31 +761,34 @@ class _WeekViewState extends State<WeekView> {
       final employee = _assignments.values.firstWhere((e) => e.id == employeeId);
       
       if (dragState.isLeftResize) {
-        // Left resize - snap start position (use LEFT EDGE of left handle)
-        final handleLeftEdge = dragState.currentX - 12; // 12px = half width of 24px handle
-        final relativeX = handleLeftEdge - gridLeft;
-        final targetDay = (relativeX / dayWidth).round().clamp(0, 6);
+        // Left resize - calculate target day from drag position
+        final deltaX = dragState.currentX - dragState.startX;
+        final targetDay = ((dragState.originalStartDay * dayWidth + deltaX) / dayWidth).round().clamp(0, 6);
         final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
         final newStartDay = targetDay.clamp(0, originalEnd);
         final newDuration = originalEnd - newStartDay + 1;
         
-        if (newDuration > 0) {
+        if (newDuration > 0 && newStartDay != dragState.originalStartDay) {
           _updateResizeAssignments(employee, shiftTitle, newStartDay, newDuration, blockLane);
         }
       } else {
-        // Right resize - snap end position (use RIGHT EDGE of right handle)
-        final handleRightEdge = dragState.currentX + 12; // 12px = half width of 24px handle
-        final relativeX = handleRightEdge - gridLeft;
-        final targetDay = (relativeX / dayWidth).round().clamp(0, 6);
-        final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay).toInt();
+        // Right resize - calculate target day from drag position
+        final deltaX = dragState.currentX - dragState.startX;
+        final currentEndPosition = (dragState.originalStartDay + dragState.originalDuration) * dayWidth;
+        final newEndPosition = currentEndPosition + deltaX;
+        final targetDay = (newEndPosition / dayWidth).round().clamp(dragState.originalStartDay, 7) - 1;
+        final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay);
         
-        if (newDuration > 0) {
+        if (newDuration > 0 && newDuration != dragState.originalDuration) {
           _updateResizeAssignments(employee, shiftTitle, dragState.originalStartDay, newDuration, blockLane);
         }
       }
     }
     
-    // Clear drag and resize state
+    // Add haptic feedback for completion
+    HapticFeedback.mediumImpact();
+    
+    // Clear drag and resize state with smooth transition
     setState(() {
       _dragStates = null;
       _resizeModeBlockKey = null;
@@ -1620,11 +1608,8 @@ class _WeekViewState extends State<WeekView> {
           }
         },
         onTap: () {
-          if (isInResizeMode) {
-            _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-          } else {
-            _showAssignmentMenu(context, employee, shiftTitle);
-          }
+          // Simply toggle resize mode - no ugly menu!
+          _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
         },
         child: isInResizeMode 
           ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
@@ -1682,139 +1667,61 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildBlockContainer(Employee employee) {
-    return Container(
+    final blockKey = '${employee.id}-${_currentTabIndex == 0 ? _getShiftTitlesForWeek(widget.weekNumber)[0] : _getShiftTitlesForWeek(widget.weekNumber)[1]}';
+    final isInResizeMode = _resizeModeBlockKey?.startsWith('${employee.id}-') == true;
+    final isBeingDragged = _dragStates?.containsKey(blockKey) == true;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutBack,
       margin: const EdgeInsets.all(0.5),
       decoration: BoxDecoration(
-        color: _getCategoryColor(employee.category),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.grey[400]!, width: 1),
+        color: isInResizeMode 
+            ? _getCategoryColor(employee.category).withOpacity(0.9)
+            : _getCategoryColor(employee.category),
+        borderRadius: BorderRadius.circular(isInResizeMode ? 6 : 4),
+        border: Border.all(
+          color: isInResizeMode 
+              ? Colors.white 
+              : Colors.grey[400]!, 
+          width: isInResizeMode ? 2 : 1
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 2,
-            offset: const Offset(1, 1),
+            color: isInResizeMode 
+                ? Colors.blue.withOpacity(0.3)
+                : Colors.black12,
+            blurRadius: isInResizeMode ? 6 : 2,
+            offset: isInResizeMode 
+                ? const Offset(0, 3)
+                : const Offset(1, 1),
+            spreadRadius: isInResizeMode ? 1 : 0,
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          employee.name,
-          style: TextStyle(
-            fontSize: 11,
-            color: _getTextColorForCategory(employee.category),
-            fontWeight: FontWeight.w600,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 150),
+        scale: isInResizeMode ? 1.05 : 1.0,
+        child: Center(
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
+            style: TextStyle(
+              fontSize: isInResizeMode ? 12 : 11,
+              color: _getTextColorForCategory(employee.category),
+              fontWeight: isInResizeMode ? FontWeight.bold : FontWeight.w600,
+            ),
+            child: Text(
+              employee.name,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
   }
 
-  void _showAssignmentMenu(BuildContext context, Employee employee, String shiftTitle) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(employee.name),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.open_with, color: Colors.blue),
-                title: const Text('Move'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Remove current assignment for moving
-                  _handleRemove(employee, shiftTitle);
-                  // Show snackbar to indicate employee is ready to be placed
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${employee.name} removed. Drag from employee list to new position.'),
-                      duration: const Duration(seconds: 3),
-                      backgroundColor: Colors.blue,
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.unfold_more, color: Colors.green),
-                title: const Text('Extend to 7 days'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Remove current assignment and assign for all 7 days
-                  final allKeys = _assignments.entries
-                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
-                      .map((e) => e.key)
-                      .toList();
-                  
-                  if (allKeys.isNotEmpty) {
-                    allKeys.sort((a, b) {
-                      final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
-                      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
-                      return dayA.compareTo(dayB);
-                    });
-                    
-                    final firstKey = allKeys.first;
-                    final keyParts = firstKey.split('-');
-                    if (keyParts.length >= 4) { // Week-shift-day-lane format
-                      final lane = int.tryParse(keyParts[3]) ?? 0;
-                      // Remove current assignment
-                      _handleRemove(employee, shiftTitle);
-                      // Assign for all 7 days starting from day 0
-                      _handleResize(employee, shiftTitle, 0, 7, lane);
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.compress, color: Colors.orange),
-                title: const Text('Make single day'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Remove all assignments and keep only the first day
-                  final allKeys = _assignments.entries
-                      .where((entry) => entry.value.id == employee.id && entry.key.startsWith('${widget.weekNumber}-$shiftTitle'))
-                      .map((e) => e.key)
-                      .toList();
-                  
-                  if (allKeys.isNotEmpty) {
-                    allKeys.sort((a, b) {
-                      final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
-                      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
-                      return dayA.compareTo(dayB);
-                    });
-                    
-                    final firstKey = allKeys.first;
-                    final keyParts = firstKey.split('-');
-                    if (keyParts.length >= 4) { // Week-shift-day-lane format
-                      final startDay = int.tryParse(keyParts[2]) ?? 0; // Day is now index 2
-                      final lane = int.tryParse(keyParts[3]) ?? 0; // Lane is now index 3
-                      // Remove current assignment
-                      _handleRemove(employee, shiftTitle);
-                      // Add back just one day
-                      setState(() {
-                        final key = '${widget.weekNumber}-$shiftTitle-$startDay-$lane'; // Week-specific
-                        _assignments[key] = employee;
-                      });
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Remove'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleRemove(employee, shiftTitle);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+
 
   void _handleBlockResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
     // Find the assignment
@@ -2272,6 +2179,7 @@ class _WeekViewState extends State<WeekView> {
           bottom: -4.0,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            onPanStart: (details) => _handleResizeStart(details, employee, shiftTitle, true),
             onPanUpdate: (details) => _handleLeftResize(details, employee, shiftTitle),
             onPanEnd: (details) => _handleResizeEnd(),
             child: Container(
@@ -2317,6 +2225,7 @@ class _WeekViewState extends State<WeekView> {
           bottom: -4.0,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            onPanStart: (details) => _handleResizeStart(details, employee, shiftTitle, false),
             onPanUpdate: (details) => _handleRightResize(details, employee, shiftTitle),
             onPanEnd: (details) => _handleResizeEnd(),
             child: Container(
