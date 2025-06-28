@@ -464,17 +464,17 @@ class _YearViewState extends State<YearView> {
                   SizedBox(
                     width: 40,
                     child: IconButton(
-                      onPressed: () => widget.onViewChanged?.call('week'),
-                      icon: const Icon(Icons.calendar_view_week, size: 16, color: Colors.white),
+                      onPressed: () => widget.onViewChanged?.call('VIIKKO'),
+                      icon: const Icon(Icons.arrow_back, size: 16, color: Colors.white),
                       padding: EdgeInsets.zero,
-                      tooltip: 'Week View',
+                      tooltip: 'Back to Week View',
                     ),
                   ),
                   // Current week indicator
                   Expanded(
                     child: Center(
                       child: Text(
-                        'YEAR VIEW - Week $_currentWeek',
+                        'YEAR OVERVIEW - Week $_currentWeek',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -489,11 +489,11 @@ class _YearViewState extends State<YearView> {
                     child: IconButton(
                       onPressed: () {
                         widget.onWeekChanged?.call(_currentWeek);
-                        widget.onViewChanged?.call('week');
+                        widget.onViewChanged?.call('VIIKKO');
                       },
                       icon: const Icon(Icons.edit, size: 16, color: Colors.white),
                       padding: EdgeInsets.zero,
-                      tooltip: 'Edit Week',
+                      tooltip: 'Edit This Week',
                     ),
                   ),
                 ],
