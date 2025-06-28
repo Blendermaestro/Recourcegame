@@ -2186,19 +2186,6 @@ class _WeekViewState extends State<WeekView> {
                         tooltip: 'Fullscreen',
                       ),
                     ),
-                    // 🔥 YEARLY VIEW BUTTON - SAME SPOT AS EDIT BUTTON IN YEAR VIEW!
-                    SizedBox(
-                      width: 32,
-                      child: IconButton(
-                        onPressed: () {
-                          widget.onViewChanged?.call('year');
-                          HapticFeedback.lightImpact();
-                        },
-                        icon: const Icon(Icons.calendar_view_month, size: 14, color: Colors.white),
-                        padding: EdgeInsets.zero,
-                        tooltip: 'Year Overview',
-                      ),
-                    ),
                     // Day/Night shift tabs
                     Expanded(
             child: Row(
@@ -2266,6 +2253,19 @@ class _WeekViewState extends State<WeekView> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    // 🔥 YEARLY VIEW BUTTON - RIGHT SIDE OF BAR!
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: () {
+                          widget.onViewChanged?.call('VUOSI'); // 🔥 FIXED PARAMETER!
+                          HapticFeedback.lightImpact();
+                        },
+                        icon: const Icon(Icons.calendar_view_month, size: 14, color: Colors.white),
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Year Overview',
                       ),
                     ),
                   ],
