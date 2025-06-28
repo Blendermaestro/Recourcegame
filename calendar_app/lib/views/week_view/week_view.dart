@@ -8,6 +8,9 @@ import 'dart:async';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'fullscreen_stub.dart' 
+  if (dart.library.html) 'fullscreen_web.dart' 
+  if (dart.library.io) 'fullscreen_mobile.dart' as fullscreen;
 // Platform-specific import removed - will use conditional web APIs
 
 class DragState {
@@ -804,15 +807,43 @@ class _WeekViewState extends State<WeekView> {
     // Quick fill menu implementation
   }
 
-  // Add fullscreen toggle function
+  // Proper fullscreen toggle that actually works!
   void _toggleFullscreen() {
-    // For now, show a message - fullscreen requires platform-specific implementation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Fullscreen: Use browser F11 or mobile browser fullscreen options'),
-        duration: Duration(seconds: 3),
-      ),
-    );
+    try {
+      final wasFullscreen = fullscreen.isFullscreen;
+      fullscreen.toggleFullscreen();
+      HapticFeedback.lightImpact();
+      
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(wasFullscreen 
+              ? '↩️ Exiting fullscreen mode' 
+              : '✅ Entering fullscreen mode'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: wasFullscreen ? Colors.blue : Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(wasFullscreen 
+              ? '📱 Exiting immersive mode'
+              : '📱 Entering immersive mode (swipe from edges to exit)'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: wasFullscreen ? Colors.blue : Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Fullscreen not supported on this platform'),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _navigateToEmployeeSettings() async {
