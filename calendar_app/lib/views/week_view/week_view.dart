@@ -174,53 +174,64 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleDropToLane(Employee employee, int dayIndex, String shiftTitle, int lane) {
-    setState(() {
-      // CHECK IF THE ENTIRE LANE IS EMPTY FIRST
-      bool isLaneCompletelyEmpty = true;
+    // DO ALL HEAVY COMPUTATION OUTSIDE setState TO AVOID UI BLOCKING
+    final weekPrefix = '${widget.weekNumber}-';
+    
+    // Pre-compute lane emptiness check (faster than inside setState)
+    bool isLaneCompletelyEmpty = true;
+    for (int day = 0; day < 7; day++) {
+      final checkKey = '$weekPrefix$shiftTitle-$day-$lane';
+      if (_assignments.containsKey(checkKey)) {
+        isLaneCompletelyEmpty = false;
+        break;
+      }
+    }
+    
+    // Pre-compute existing assignments for this employee (cache lookup)
+    final employeeKeys = <String>{};
+    for (final entry in _assignments.entries) {
+      if (entry.key.startsWith(weekPrefix) && entry.value.id == employee.id) {
+        employeeKeys.add(entry.key);
+      }
+    }
+    
+    // Pre-compute what assignments to add (outside setState)
+    final newAssignments = <String, Employee>{};
+    
+    if (isLaneCompletelyEmpty) {
+      // LANE IS EMPTY - FILL ENTIRE WEEK
       for (int day = 0; day < 7; day++) {
-        final checkKey = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
-        if (_assignments.containsKey(checkKey)) {
-          isLaneCompletelyEmpty = false;
-          break;
-        }
-      }
-      
-      if (isLaneCompletelyEmpty) {
-        // LANE IS EMPTY - FILL ENTIRE WEEK
-        final shiftTitles = _getShiftTitlesForWeek(widget.weekNumber);
-        final otherShift = shiftTitle == shiftTitles[0] ? shiftTitles[1] : shiftTitles[0];
+        final key = '$weekPrefix$shiftTitle-$day-$lane';
         
-        // Add to ALL 7 days in this lane, keeping existing assignments elsewhere
-        for (int day = 0; day < 7; day++) {
-          final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
-          
-          // Check if user already has ANY assignment on this day IN THIS WEEK
-          final hasExistingAssignment = _assignments.keys
-              .any((k) => k.startsWith('${widget.weekNumber}-') && k.contains('-$day-') && _assignments[k]?.id == employee.id);
-          
-          // Only add if user has NO assignment on this day
-          if (!hasExistingAssignment) {
-            _assignments[key] = employee;
-          }
+        // Fast check using pre-computed set
+        final hasExistingAssignment = employeeKeys.any((k) => k.contains('-$day-'));
+        
+        if (!hasExistingAssignment) {
+          newAssignments[key] = employee;
         }
-      } else {
-        // LANE HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS
-        for (int day = 0; day < 7; day++) {
-          final key = '${widget.weekNumber}-$shiftTitle-$day-$lane'; // Add week number
+      }
+    } else {
+      // LANE HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS
+      for (int day = 0; day < 7; day++) {
+        final key = '$weekPrefix$shiftTitle-$day-$lane';
+        
+        if (!_assignments.containsKey(key)) {
+          // Fast check using pre-computed set
+          final hasExistingAssignment = employeeKeys.any((k) => k.contains('-$day-'));
           
-          if (!_assignments.containsKey(key)) {
-            // Check if user already has ANY assignment on this day IN THIS WEEK
-            final hasExistingAssignment = _assignments.keys
-                .any((k) => k.startsWith('${widget.weekNumber}-') && k.contains('-$day-') && _assignments[k]?.id == employee.id);
-            
-            // Only add if user has NO assignment on this day
-            if (!hasExistingAssignment) {
-              _assignments[key] = employee;
-            }
+          if (!hasExistingAssignment) {
+            newAssignments[key] = employee;
           }
         }
       }
-    });
+    }
+    
+    // SINGLE setState call with all changes batched
+    if (newAssignments.isNotEmpty) {
+      setState(() {
+        _assignments.addAll(newAssignments);
+      });
+    }
   }
 
   void _handleResize(Employee employee, String shiftTitle, int startDay, int duration, int lane) {
@@ -275,23 +286,25 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _removeSpecificBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    setState(() {
-      // Find and remove only THIS specific continuous block
-      final thisBlockKeys = <String>[];
-      for (int day = blockStartDay; day < 7; day++) {
-        final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane'; // Week-specific
-        if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
-          thisBlockKeys.add(key);
-        } else {
-          break; // Stop at first gap
+    // Pre-compute keys to remove (outside setState for better performance)
+    final thisBlockKeys = <String>[];
+    for (int day = blockStartDay; day < 7; day++) {
+      final key = '${widget.weekNumber}-$shiftTitle-$day-$blockLane';
+      if (_assignments.containsKey(key) && _assignments[key]?.id == employee.id) {
+        thisBlockKeys.add(key);
+      } else {
+        break; // Stop at first gap
+      }
+    }
+    
+    // Single setState with batched removal
+    if (thisBlockKeys.isNotEmpty) {
+      setState(() {
+        for (final key in thisBlockKeys) {
+          _assignments.remove(key);
         }
-      }
-      
-      // Remove only this specific block
-      for (final key in thisBlockKeys) {
-        _assignments.remove(key);
-      }
-    });
+      });
+    }
   }
 
   List<String> _getShiftTitlesForWeek(int weekNumber) {
@@ -1089,28 +1102,33 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildUnifiedShiftView(List<String> shiftTitles) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
-      ),
-      child: Row(
-        children: [
-          // Profession labels for current shift
-          Container(
-            width: 32, // Compact width to save space
-            color: const Color(0xFF9DB4C0), // Cadet gray from palette
-            child: Column(
-              children: _currentTabIndex == 0 
-                  ? _buildDayShiftProfessionLabels()
-                  : _buildNightShiftProfessionLabels(),
+    return RepaintBoundary(
+      key: ValueKey('unified-shift-${widget.weekNumber}-$_currentTabIndex'),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border.fromBorderSide(BorderSide(color: Color(0xFF9DB4C0), width: 1)),
+        ),
+        child: Row(
+          key: ValueKey('shift-row-$_currentTabIndex'),
+          children: [
+            // Profession labels for current shift
+            Container(
+              key: const ValueKey('profession-labels'),
+              width: 32, // Compact width to save space
+              color: const Color(0xFF9DB4C0), // Cadet gray from palette
+              child: Column(
+                children: _currentTabIndex == 0 
+                    ? _buildDayShiftProfessionLabels()
+                    : _buildNightShiftProfessionLabels(),
+              ),
             ),
-          ),
-          // Calendar grid for current shift
-          Expanded(
-            child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
-          ),
-        ],
+            // Calendar grid for current shift
+            Expanded(
+              child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1211,38 +1229,44 @@ class _WeekViewState extends State<WeekView> {
       }
     }
     
-    return Stack(
-      children: [
-        // Grid background
-        Column(
-          children: List.generate(totalRows, (row) => 
-            Container(
-              height: rowHeight,
-              child: Row(
-                children: List.generate(7, (day) => 
-                  Expanded(
-                    child: DragTarget<Employee>(
-                      onAcceptWithDetails: (details) {
-                        _handleDropToLane(details.data, day, shiftTitle, row);
-                      },
-                      builder: (context, candidateData, rejectedData) {
-                        return Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey[200]!, width: 0.5),
-                            color: candidateData.isNotEmpty ? Colors.green.withOpacity(0.3) : null,
-                          ),
-                        );
-                      },
+    return RepaintBoundary(
+      key: ValueKey('calendar-grid-$shiftTitle-${widget.weekNumber}'),
+      child: Stack(
+        children: [
+          // Grid background
+          RepaintBoundary(
+            key: ValueKey('grid-bg-$shiftTitle'),
+            child: Column(
+              children: List.generate(totalRows, (row) => 
+                Container(
+                  height: rowHeight,
+                  child: Row(
+                    children: List.generate(7, (day) => 
+                      Expanded(
+                        child: DragTarget<Employee>(
+                          onAcceptWithDetails: (details) {
+                            _handleDropToLane(details.data, day, shiftTitle, row);
+                          },
+                          builder: (context, candidateData, rejectedData) {
+                            return Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[200]!, width: 0.5),
+                                color: candidateData.isNotEmpty ? Colors.green.withOpacity(0.3) : null,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        // Assignment blocks for current shift
-        ..._buildShiftAssignmentBlocks(shiftTitle, dayWidth, rowHeight),
-      ],
+          // Assignment blocks for current shift
+          ..._buildShiftAssignmentBlocks(shiftTitle, dayWidth, rowHeight),
+        ],
+      ),
     );
   }
 
@@ -1546,63 +1570,66 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildAssignmentBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    return Draggable<Employee>(
-      data: employee,
-      onDragStarted: () {
-        _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
-      },
-      feedback: Material(
-        child: Container(
-          width: 80,
-          height: 18,
+    return RepaintBoundary(
+      key: ValueKey('${employee.id}-$shiftTitle-$blockStartDay-$blockLane'),
+      child: Draggable<Employee>(
+        data: employee,
+        onDragStarted: () {
+          _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+        },
+        feedback: Material(
+          child: Container(
+            width: 80,
+            height: 18,
+            decoration: BoxDecoration(
+              color: Colors.grey[600]?.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.grey[400]!, width: 1),
+            ),
+            child: Center(
+              child: Text(
+                employee.name,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+        childWhenDragging: Container(
           decoration: BoxDecoration(
-            color: Colors.grey[600]?.withOpacity(0.8),
+            color: Colors.grey[400],
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(0.5),
+          decoration: BoxDecoration(
+            color: _getCategoryColor(employee.category),
             borderRadius: BorderRadius.circular(4),
             border: Border.all(color: Colors.grey[400]!, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 2,
+                offset: const Offset(1, 1),
+              ),
+            ],
           ),
           child: Center(
             child: Text(
               employee.name,
-              style: const TextStyle(
-                fontSize: 10,
-                color: Colors.white,
+              style: TextStyle(
+                fontSize: 11,
+                color: _getTextColorForCategory(employee.category),
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ),
-      ),
-      childWhenDragging: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[400],
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ),
-      child: Container(
-        margin: const EdgeInsets.all(0.5),
-        decoration: BoxDecoration(
-          color: _getCategoryColor(employee.category),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.grey[400]!, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 2,
-              offset: const Offset(1, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            employee.name,
-            style: TextStyle(
-              fontSize: 11,
-              color: _getTextColorForCategory(employee.category),
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -1885,7 +1912,11 @@ class _WeekViewState extends State<WeekView> {
                           // Day shift tab
                           Expanded(
                             child: GestureDetector(
-                              onTap: () => setState(() => _currentTabIndex = 0),
+                              onTap: () {
+                        if (_currentTabIndex != 0) {
+                          setState(() => _currentTabIndex = 0);
+                        }
+                      },
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: _currentTabIndex == 0 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0), 
@@ -1912,7 +1943,11 @@ class _WeekViewState extends State<WeekView> {
                           // Night shift tab
                           Expanded(
                             child: GestureDetector(
-                              onTap: () => setState(() => _currentTabIndex = 1),
+                              onTap: () {
+                        if (_currentTabIndex != 1) {
+                          setState(() => _currentTabIndex = 1);
+                        }
+                      },
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: _currentTabIndex == 1 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0),
