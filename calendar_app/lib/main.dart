@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:calendar_app/views/week_view/week_view.dart';
 import 'package:calendar_app/views/employee_settings/employee_settings_view.dart';
 import 'package:calendar_app/views/auth/auth_view.dart';
-import 'package:calendar_app/services/supabase_config.dart';
+import 'package:calendar_app/services/auth_service.dart';
+import 'package:supabase_flutter/supabase_config.dart';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,37 +16,58 @@ void main() async {
   runApp(const CalendarApp());
 }
 
-class CalendarApp extends StatelessWidget {
+class CalendarApp extends StatefulWidget {
   const CalendarApp({super.key});
+
+  @override
+  State<CalendarApp> createState() => _CalendarAppState();
+}
+
+class _CalendarAppState extends State<CalendarApp> {
+  String _currentView = 'VIIKKO';
+  int _currentWeek = 1;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Työaikakalenteri',
-      theme: ThemeData.light().copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5C6B73), // Payne's gray from your palette
-          brightness: Brightness.light,
+      theme: _buildTheme(),
+      home: AuthWrapper(
+        child: _MainView(
+          currentView: _currentView,
+          currentWeek: _currentWeek,
+          onViewChanged: (view) => setState(() => _currentView = view),
+          onWeekChanged: (week) => setState(() => _currentWeek = week),
         ),
-        scaffoldBackgroundColor: const Color(0xFFE0FBFC), // Light cyan background
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF253237), // Gunmetal - darkest from palette
-          foregroundColor: Colors.white,
-          elevation: 2,
-        ),
-        drawerTheme: const DrawerThemeData(
-          backgroundColor: Color(0xFFE0FBFC), // Light cyan to match scaffold
-        ),
-        visualDensity: VisualDensity.compact,
       ),
-      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
+    );
+  }
+
+  ThemeData _buildTheme() {
+    return ThemeData.light().copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF5C6B73), // Payne's gray from your palette
+        brightness: Brightness.light,
+      ),
+      scaffoldBackgroundColor: const Color(0xFFE0FBFC), // Light cyan background
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF253237), // Gunmetal - darkest from palette
+        foregroundColor: Colors.white,
+        elevation: 2,
+      ),
+      drawerTheme: const DrawerThemeData(
+        backgroundColor: Color(0xFFE0FBFC), // Light cyan to match scaffold
+      ),
+      visualDensity: VisualDensity.compact,
     );
   }
 }
 
 class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
+  const AuthWrapper({super.key, required this.child});
+
+  final Widget child;
 
   @override
   State<AuthWrapper> createState() => _AuthWrapperState();
@@ -67,140 +89,51 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     // Show auth view if not signed in, otherwise show main app
     if (AuthService.isSignedIn) {
-      return const HomeScreen();
+      return widget.child;
     } else {
       return const AuthView();
     }
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class _MainView extends StatelessWidget {
+  final String currentView;
+  final int currentWeek;
+  final Function(String) onViewChanged;
+  final Function(int) onWeekChanged;
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  String _currentView = 'VIIKKO';
-  int _currentWeek = 1;
+  const _MainView({
+    required this.currentView,
+    required this.currentWeek,
+    required this.onViewChanged,
+    required this.onWeekChanged,
+  });
 
   void _navigateToWeek(int weekNumber) {
-    setState(() {
-      _currentView = 'VIIKKO';
-      _currentWeek = weekNumber;
-    });
+    onViewChanged('VIIKKO');
+    onWeekChanged(weekNumber);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 40, // Compact app bar
-        title: Text(
-          'Työaikakalenteri', 
-          style: const TextStyle(fontSize: 18), // Larger title
-        ),
-        centerTitle: true,
+    return Material(
+      child: SafeArea(
+        child: _buildCurrentView(),
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
-                color: Color(0xFF253237), // Gunmetal to match app bar
-              ),
-              child: Text(
-                'Työaikakalenteri',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_view_week),
-              title: const Text('VIIKKO'),
-              selected: _currentView == 'VIIKKO',
-              onTap: () {
-                setState(() {
-                  _currentView = 'VIIKKO';
-                });
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_view_month),
-              title: const Text('VUOSI'),
-              selected: _currentView == 'VUOSI',
-              onTap: () {
-                setState(() {
-                  _currentView = 'VUOSI';
-                });
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people),
-              title: const Text('TYÖNTEKIJÄT'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const EmployeeSettingsView()),
-                );
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.account_circle),
-              title: Text(AuthService.currentUser?.email ?? 'User'),
-              subtitle: const Text('Account'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('LOGOUT'),
-              onTap: () async {
-                await AuthService.signOut();
-                if (mounted) {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-      body: _buildCurrentView(),
     );
   }
 
-  String _getAppBarTitle() {
-    switch (_currentView) {
-      case 'VIIKKO':
-        return 'Viikko $_currentWeek';
-      case 'VUOSI':
-        return 'Vuosikalenteri';
-      default:
-        return 'Työaikakalenteri';
-    }
-  }
-
   Widget _buildCurrentView() {
-    switch (_currentView) {
+    switch (currentView) {
       case 'VIIKKO':
         return WeekView(
-          weekNumber: _currentWeek,
-          onWeekChanged: (newWeek) {
-            setState(() {
-              _currentWeek = newWeek;
-            });
-          },
+          weekNumber: currentWeek,
+          onWeekChanged: onWeekChanged,
+          onViewChanged: onViewChanged, // Add this callback
         );
       case 'VUOSI':
         return _YearView(
-          currentWeek: _currentWeek,
+          currentWeek: currentWeek,
           onWeekSelected: _navigateToWeek,
         );
       default:

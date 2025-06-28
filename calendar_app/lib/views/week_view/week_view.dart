@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:calendar_app/services/auth_service.dart';
 
 class DragState {
   final double startX;
@@ -25,7 +26,8 @@ class DragState {
 class WeekView extends StatefulWidget {
   final int weekNumber;
   final Function(int)? onWeekChanged;
-  const WeekView({super.key, required this.weekNumber, this.onWeekChanged});
+  final Function(String)? onViewChanged;
+  const WeekView({super.key, required this.weekNumber, this.onWeekChanged, this.onViewChanged});
 
   @override
   State<WeekView> createState() => _WeekViewState();
@@ -1084,89 +1086,9 @@ class _WeekViewState extends State<WeekView> {
       ),
       child: Column(
         children: [
-          // Tab bar
-          Container(
-            height: 40,
-            color: const Color(0xFFE0FBFC), // Light cyan background
-            child: Row(
-              children: [
-                // Day shift tab
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _currentTabIndex = 0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _currentTabIndex == 0 ? const Color(0xFF5C6B73) : const Color(0xFFC2DFE3), // Payne's gray when active, light blue when inactive
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _currentTabIndex == 0 ? const Color(0xFF253237) : Colors.transparent, // Gunmetal underline
-                            width: 3,
-                          ),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          shiftTitles[0],
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _currentTabIndex == 0 ? Colors.white : const Color(0xFF253237), // White when active, dark when inactive
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Night shift tab
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _currentTabIndex = 1),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _currentTabIndex == 1 ? const Color(0xFF5C6B73) : const Color(0xFFC2DFE3), // Payne's gray when active, light blue when inactive
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _currentTabIndex == 1 ? const Color(0xFF253237) : Colors.transparent, // Gunmetal underline
-                            width: 3,
-                          ),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          shiftTitles[1],
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _currentTabIndex == 1 ? Colors.white : const Color(0xFF253237), // White when active, dark when inactive
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Tab content
+          // Calendar grid - tabs now moved to main bar
           Expanded(
-            child: Row(
-              children: [
-                // Profession labels for current shift
-                Container(
-                  width: 40,
-                  color: const Color(0xFF9DB4C0), // Cadet gray from palette
-                  child: Column(
-                    children: _currentTabIndex == 0 
-                        ? _buildDayShiftProfessionLabels()
-                        : _buildNightShiftProfessionLabels(),
-                  ),
-                ),
-                // Calendar grid for current shift
-                Expanded(
-                  child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
-                ),
-              ],
-            ),
+            child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
           ),
         ],
       ),
@@ -1952,7 +1874,6 @@ class _WeekViewState extends State<WeekView> {
   }
 
   double _calculateCalendarHeight() {
-    const double tabHeight = 40.0;
     const double rowHeight = 25.2;
     
     // Calculate total rows for current shift
@@ -1969,7 +1890,7 @@ class _WeekViewState extends State<WeekView> {
       }
     }
     
-    return tabHeight + (totalRows * rowHeight) + 2; // +2 for borders
+    return (totalRows * rowHeight) + 2; // +2 for borders, no tab height needed
   }
 
   @override
@@ -1993,60 +1914,140 @@ class _WeekViewState extends State<WeekView> {
         body: SafeArea(
           child: Column(
             children: [
-              // Week navigation header
+              // Combined week navigation + tabs bar
               Container(
-                height: 40,
-                margin: const EdgeInsets.all(4),
+                height: 32, // Reduced from 40
+                margin: const EdgeInsets.all(2), // Reduced from 4
                 decoration: BoxDecoration(
                   color: const Color(0xFF253237), // Gunmetal
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                 ),
                 child: Row(
                   children: [
-                    IconButton(
-                      onPressed: widget.weekNumber > 1 
-                          ? () => widget.onWeekChanged?.call(widget.weekNumber - 1)
-                          : null,
-                      icon: const Icon(Icons.arrow_back_ios, size: 16),
-                      color: widget.weekNumber > 1 ? Colors.white : Colors.white38,
+                    // Menu button
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: () => _showMainMenu(context),
+                        icon: const Icon(Icons.menu, size: 14, color: Colors.white),
+                        padding: EdgeInsets.zero,
+                      ),
                     ),
-                    Expanded(
+                    // Week navigation
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: widget.weekNumber > 1 
+                            ? () => widget.onWeekChanged?.call(widget.weekNumber - 1)
+                            : null,
+                        icon: const Icon(Icons.arrow_back_ios, size: 12),
+                        color: widget.weekNumber > 1 ? Colors.white : Colors.white38,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 60,
                       child: Center(
                         child: Text(
-                          'Week ${widget.weekNumber}',
+                          'W${widget.weekNumber}',
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: widget.weekNumber < 52 
-                          ? () => widget.onWeekChanged?.call(widget.weekNumber + 1)
-                          : null,
-                      icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                      color: widget.weekNumber < 52 ? Colors.white : Colors.white38,
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: widget.weekNumber < 52 
+                            ? () => widget.onWeekChanged?.call(widget.weekNumber + 1)
+                            : null,
+                        icon: const Icon(Icons.arrow_forward_ios, size: 12),
+                        color: widget.weekNumber < 52 ? Colors.white : Colors.white38,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    // Day/Night shift tabs
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Day shift tab
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => _currentTabIndex = 0),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: _currentTabIndex == 0 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0), 
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: _currentTabIndex == 0 ? const Color(0xFFE0FBFC) : Colors.transparent,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    shiftTitles[0].split('/')[0].trim(), // Just show "A", "B", etc.
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _currentTabIndex == 0 ? Colors.white : const Color(0xFF253237),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Night shift tab
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => _currentTabIndex = 1),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: _currentTabIndex == 1 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0),
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: _currentTabIndex == 1 ? const Color(0xFFE0FBFC) : Colors.transparent,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    shiftTitles[1].split('/')[0].trim(), // Just show "A", "B", etc.
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _currentTabIndex == 1 ? Colors.white : const Color(0xFF253237),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
               
-              // Simple day header
+              // Compact day header
               Container(
-                height: 40,
-                margin: const EdgeInsets.all(4),
+                height: 32, // Reduced from 40
+                margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // Reduced margins
                 decoration: BoxDecoration(
                   color: const Color(0xFFC2DFE3), // Light blue from palette
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 44,
+                    SizedBox(
+                      width: 32, // Reduced from 44
                       child: IconButton(
-                        icon: const Icon(Icons.settings, size: 16, color: Colors.black87),
+                        icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
                         onPressed: _showProfessionEditDialog,
                         padding: EdgeInsets.zero,
                       ),
@@ -2060,17 +2061,17 @@ class _WeekViewState extends State<WeekView> {
                 ),
               ),
               
-              // Calendar section with dynamic height based on profession rows
+              // Calendar section with dynamic height - no top margin
               Container(
                 height: _calculateCalendarHeight(),
-                margin: const EdgeInsets.only(left: 4, right: 4),
+                margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No top margin
                 child: _buildUnifiedShiftView(shiftTitles),
               ),
 
               // Show workers button when section is hidden
               if (!_showWorkerSection) Container(
-                height: 32,
-                margin: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
+                height: 28, // Reduced from 32
+                margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
                 decoration: BoxDecoration(
                   color: const Color(0xFFC2DFE3), // Light blue
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
@@ -2078,10 +2079,12 @@ class _WeekViewState extends State<WeekView> {
                 child: Center(
                   child: TextButton.icon(
                     onPressed: () => setState(() => _showWorkerSection = true),
-                    icon: const Icon(Icons.visibility, size: 16),
-                    label: const Text('Show Workers', style: TextStyle(fontSize: 12)),
+                    icon: const Icon(Icons.visibility, size: 12), // Smaller icon
+                    label: const Text('Show Workers', style: TextStyle(fontSize: 10)), // Smaller text
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFF253237), // Gunmetal text
+                      padding: EdgeInsets.zero, // Remove padding
+                      minimumSize: const Size(0, 0), // Remove minimum size
                     ),
                   ),
                 ),
@@ -2090,19 +2093,78 @@ class _WeekViewState extends State<WeekView> {
               // Worker list - takes remaining space
               if (_showWorkerSection) Expanded(
                 child: Container(
-                  margin: const EdgeInsets.only(left: 4, right: 4, bottom: 4, top: 0),
+                  margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(2), // Reduced from 4
                     child: _buildFullWidthEmployeeGrid(),
                   ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // Add main menu function
+  void _showMainMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF253237),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.calendar_view_week, color: Colors.white),
+              title: const Text('VIIKKO', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                widget.onViewChanged?.call('VIIKKO');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_view_month, color: Colors.white),
+              title: const Text('VUOSI', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                widget.onViewChanged?.call('VUOSI');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people, color: Colors.white),
+              title: const Text('TYÖNTEKIJÄT', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const EmployeeSettingsView()),
+                );
+              },
+            ),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: const Icon(Icons.account_circle, color: Colors.white),
+              title: Text(AuthService.currentUser?.email ?? 'User', style: const TextStyle(color: Colors.white)),
+              subtitle: const Text('Account', style: TextStyle(color: Colors.white70)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.white),
+              title: const Text('LOGOUT', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                await AuthService.signOut();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -2122,7 +2184,7 @@ class _WeekViewState extends State<WeekView> {
       
       return Expanded(
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 1), // Reduced from 2
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
@@ -2131,14 +2193,14 @@ class _WeekViewState extends State<WeekView> {
                 dayOrder[index],
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  fontSize: 12,
+                  fontSize: 10, // Reduced from 12
                   color: Color(0xFF253237), // Gunmetal
                 ),
               ),
               Text(
                 date.day.toString(),
                 style: const TextStyle(
-                  fontSize: 10,
+                  fontSize: 8, // Reduced from 10
                   color: Color(0xFF5C6B73), // Payne's gray
                 ),
               ),

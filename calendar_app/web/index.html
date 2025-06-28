@@ -18,21 +18,99 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
+  <meta name="description" content="Työaikakalenteri - Work Schedule Calendar">
+  
+  <!-- Mobile optimization -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  
+  <!-- PWA and mobile app capabilities -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="calendar_app">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Työaikakalenteri">
+  
+  <!-- Fullscreen support -->
+  <meta name="theme-color" content="#253237">
+  <meta name="msapplication-navbutton-color" content="#253237">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- Prevent zoom and selection -->
+  <meta name="format-detection" content="telephone=no">
+  <meta name="msapplication-tap-highlight" content="no">
+  
+  <!-- Icons -->
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>calendar_app</title>
+  <title>Työaikakalenteri</title>
   <link rel="manifest" href="manifest.json">
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* Prevent scrolling on mobile */
+      touch-action: manipulation; /* Improve touch performance */
+      -webkit-touch-callout: none; /* Disable callout */
+      -webkit-user-select: none; /* Disable selection */
+      -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+    }
+    
+    /* Fullscreen styles */
+    html, body {
+      height: 100vh;
+      width: 100vw;
+    }
+    
+    /* Hide address bar on mobile browsers */
+    @media (max-width: 768px) {
+      body {
+        height: 100vh;
+        height: -webkit-fill-available;
+      }
+    }
+  </style>
 </head>
 <body>
+  <script>
+    // Request fullscreen on mobile devices
+    function requestFullscreen() {
+      if (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        // Try to hide address bar on mobile
+        window.scrollTo(0, 1);
+        
+        // Request fullscreen if supported
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+          elem.requestFullscreen().catch(() => {});
+        } else if (elem.webkitRequestFullscreen) {
+          elem.webkitRequestFullscreen().catch(() => {});
+        } else if (elem.msRequestFullscreen) {
+          elem.msRequestFullscreen().catch(() => {});
+        }
+      }
+    }
+    
+    // Try to request fullscreen after a user interaction
+    document.addEventListener('touchstart', function() {
+      setTimeout(requestFullscreen, 100);
+    }, { once: true });
+    
+    document.addEventListener('click', function() {
+      setTimeout(requestFullscreen, 100);
+    }, { once: true });
+    
+    // Prevent context menu on mobile
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+    
+    // Prevent default touch behaviors
+    document.addEventListener('touchmove', function(e) {
+      e.preventDefault();
+    }, { passive: false });
+  </script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
