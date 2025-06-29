@@ -6,6 +6,12 @@ import 'dart:convert';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/rendering.dart';
 
 class YearView extends StatefulWidget {
   final int initialWeek;
@@ -27,6 +33,9 @@ class _YearViewState extends State<YearView> {
   late PageController _pageController;
   int _currentWeek = 1;
   final Map<String, Employee> _assignments = {};
+  
+  // RepaintBoundary key for screenshots
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
   
   // Static maps for profession settings (shared with WeekView)
   static final Map<int, Map<EmployeeRole, bool>> _weekDayShiftProfessions = {};
@@ -312,6 +321,7 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildWeekPage(int weekNumber) {
     final shiftTitles = _getShiftTitlesForWeek(weekNumber);
+    final dates = _getDatesForWeek(weekNumber); // GET THE DATES!
     
     // Calculate day shift total rows first
     final dayProfessions = _getDayShiftProfessions(weekNumber);
@@ -344,6 +354,8 @@ class _YearViewState extends State<YearView> {
     return SingleChildScrollView(
       child: Column(
         children: [
+          // 🔥 ADD THE MISSING DATE HEADER!
+          _buildWeekHeader(weekNumber, dates),
           // Day shift
           Container(
             height: dayShiftHeight,
@@ -760,6 +772,96 @@ class _YearViewState extends State<YearView> {
     return currentWeek.clamp(1, 52);
   }
 
+  // Save screenshot of current week using RepaintBoundary
+  Future<void> _saveScreenshot() async {
+    try {
+      // Request storage permission
+      if (!kIsWeb && Platform.isAndroid) {
+        final status = await Permission.storage.status;
+        if (!status.isGranted) {
+          final result = await Permission.storage.request();
+          if (!result.isGranted) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Storage permission required to save image')),
+              );
+            }
+            return;
+          }
+        }
+      }
+
+      // Capture screenshot using RepaintBoundary
+      RenderRepaintBoundary? boundary = _repaintBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to capture screenshot')),
+          );
+        }
+        return;
+      }
+
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to convert image')),
+          );
+        }
+        return;
+      }
+      
+      Uint8List imageBytes = byteData.buffer.asUint8List();
+
+      // Get save directory
+      Directory? directory;
+      if (kIsWeb) {
+        // For web, we'll trigger download differently
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Screenshot captured! (Web download not implemented)')),
+          );
+        }
+        return;
+      } else if (Platform.isAndroid) {
+        directory = await getExternalStorageDirectory();
+        directory ??= await getApplicationDocumentsDirectory();
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      // Create filename with current week and timestamp
+      final now = DateTime.now();
+      final filename = 'calendar_week_${_currentWeek}_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.png';
+      final file = File('${directory.path}/$filename');
+
+      // Save file
+      await file.writeAsBytes(imageBytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Screenshot saved: $filename'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Haptic feedback
+      HapticFeedback.lightImpact();
+
+    } catch (e) {
+      print('Error saving screenshot: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving screenshot: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -814,6 +916,13 @@ class _YearViewState extends State<YearView> {
                     padding: EdgeInsets.zero,
                     tooltip: 'Go to Current Week',
                   ),
+                  // Save screenshot button
+                  IconButton(
+                    onPressed: _saveScreenshot,
+                    icon: const Icon(Icons.save_alt, size: 16, color: Colors.white),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Save Calendar as Image',
+                  ),
                   const SizedBox(width: 8), // Reduced spacing
                   TextButton(
                     onPressed: () => widget.onViewChanged?.call('VIIKKO'),
@@ -833,22 +942,28 @@ class _YearViewState extends State<YearView> {
                 ],
               ),
             ),
-            // Scrollable content area
+            // Scrollable content area wrapped with RepaintBoundary
             Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentWeek = index + 1;
-                  });
-                  widget.onWeekChanged?.call(_currentWeek);
-                  HapticFeedback.lightImpact();
-                },
-                itemCount: 52,
-                itemBuilder: (context, index) {
-                  final weekNumber = index + 1;
-                  return _buildWeekPage(weekNumber);
-                },
+              child: RepaintBoundary(
+                key: _repaintBoundaryKey,
+                child: Container(
+                  color: const Color(0xFFE0FBFC), // Background color for screenshot
+                  child: PageView.builder(
+                    controller: _pageController,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentWeek = index + 1;
+                      });
+                      widget.onWeekChanged?.call(_currentWeek);
+                      HapticFeedback.lightImpact();
+                    },
+                    itemCount: 52,
+                    itemBuilder: (context, index) {
+                      final weekNumber = index + 1;
+                      return _buildWeekPage(weekNumber);
+                    },
+                  ),
+                ),
               ),
             ),
           ],

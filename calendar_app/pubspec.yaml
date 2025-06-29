@@ -39,6 +39,10 @@ dependencies:
   
   # Additional dependencies for web and auth
   crypto: ^3.0.3
+  
+    # Screenshot functionality  
+  path_provider: ^2.1.1
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
