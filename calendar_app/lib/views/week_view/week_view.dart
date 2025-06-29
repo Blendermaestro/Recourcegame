@@ -87,6 +87,7 @@ class _WeekViewState extends State<WeekView> {
       _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
     }
     
+    _loadCustomProfessions(); // Load custom professions first
     _loadEmployees();
     _loadAssignments(); // LOAD GLOBAL ASSIGNMENTS
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
@@ -122,6 +123,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: true,
     EmployeeRole.huolto: true,
+    EmployeeRole.custom: false,
   };
   
   static Map<EmployeeRole, bool> _getDefaultNightShiftProfessions() => {
@@ -136,6 +138,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: false,
     EmployeeRole.huolto: false,
+    EmployeeRole.custom: false,
   };
   
   static Map<EmployeeRole, int> _getDefaultDayShiftRows() => {
@@ -150,6 +153,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.custom: 1,
   };
   
   static Map<EmployeeRole, int> _getDefaultNightShiftRows() => {
@@ -164,6 +168,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.custom: 1,
   };
   
   Map<EmployeeRole, bool> get _dayShiftProfessions {
@@ -693,77 +698,190 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _showProfessionEditDialog() {
-    final shiftTitles = _getShiftTitlesForWeek(widget.weekNumber);
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return DefaultTabController(
-              length: 2,
-              child: AlertDialog(
-                title: Text('Ammatit - Viikko ${widget.weekNumber}'),
-                backgroundColor: Colors.white,
-                content: SizedBox(
-                  width: 400,
-                  height: 500,
+            return AlertDialog(
+              title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.black87)),
+              content: Container(
+                width: 400,
+                height: 500,
+                child: DefaultTabController(
+                  length: 2,
                   child: Column(
                     children: [
-                      // Tab bar for day/night shifts
-                      TabBar(
+                      const TabBar(
                         labelColor: Colors.black87,
+                        unselectedLabelColor: Colors.black54,
                         tabs: [
-                          Tab(text: shiftTitles[0]),
-                          Tab(text: shiftTitles[1]),
+                          Tab(text: 'Day Shift'),
+                          Tab(text: 'Night Shift'),
                         ],
                       ),
-                      // Tab views
                       Expanded(
                         child: TabBarView(
                           children: [
-                            // Day shift settings
                             _buildProfessionSettings(setDialogState, true),
-                            // Night shift settings
                             _buildProfessionSettings(setDialogState, false),
                           ],
+                        ),
+                      ),
+                      // Add custom profession button
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showAddCustomProfessionDialog(setDialogState),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Custom Profession'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5C6B73),
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Peruuta'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      // Reset to defaults for this week
-                      setDialogState(() {
-                        _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
-                        _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
-                        _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
-                        _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
-                      });
-                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
-                    },
-                    child: const Text('Palauta oletukset'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
-                      setState(() {}); // Refresh main view
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text('OK'),
-                  ),
-                ],
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close', style: TextStyle(color: Colors.black87)),
+                ),
+              ],
             );
           },
         );
       },
     );
+  }
+
+  void _showAddCustomProfessionDialog(StateSetter parentSetState) {
+    final nameController = TextEditingController();
+    final shortNameController = TextEditingController();
+    bool dayVisible = true;
+    bool nightVisible = true;
+    int rows = 1;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add Custom Profession'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Profession Name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: shortNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Short Name (e.g., TEST)',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLength: 6,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: dayVisible,
+                        onChanged: (value) => setDialogState(() => dayVisible = value ?? true),
+                      ),
+                      const Text('Visible in Day Shift'),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: nightVisible,
+                        onChanged: (value) => setDialogState(() => nightVisible = value ?? true),
+                      ),
+                      const Text('Visible in Night Shift'),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const Text('Rows: '),
+                      IconButton(
+                        onPressed: rows > 1 ? () => setDialogState(() => rows--) : null,
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text('$rows'),
+                      IconButton(
+                        onPressed: rows < 4 ? () => setDialogState(() => rows++) : null,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (nameController.text.isNotEmpty && shortNameController.text.isNotEmpty) {
+                      final customProf = CustomProfession(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: nameController.text,
+                        shortName: shortNameController.text.toUpperCase(),
+                        defaultDayVisible: dayVisible,
+                        defaultNightVisible: nightVisible,
+                        defaultRows: rows,
+                      );
+                      
+                      CustomProfessionManager.addCustomProfession(customProf);
+                      _saveCustomProfessions();
+                      
+                      Navigator.pop(context);
+                      parentSetState(() {});
+                      setState(() {});
+                    }
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _saveCustomProfessions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = CustomProfessionManager.toJson();
+      await prefs.setString('custom_professions', jsonEncode(json));
+    } catch (e) {
+      print('Error saving custom professions: $e');
+    }
+  }
+
+  Future<void> _loadCustomProfessions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString('custom_professions');
+      if (jsonString != null) {
+        final json = jsonDecode(jsonString);
+        CustomProfessionManager.fromJson(json);
+      }
+    } catch (e) {
+      print('Error loading custom professions: $e');
+    }
   }
 
   Widget _buildProfessionSettings(StateSetter setDialogState, bool isDayShift) {
@@ -785,10 +903,24 @@ class _WeekViewState extends State<WeekView> {
                   Checkbox(
                     value: professions[role],
                     onChanged: (bool? value) {
+                      final wasVisible = professions[role] ?? false;
+                      final willBeVisible = value ?? false;
+                      
                       setDialogState(() {
-                        professions[role] = value ?? false;
+                        professions[role] = willBeVisible;
                       });
+                      
+                      // If profession is being hidden, move assignments back to workers
+                      if (wasVisible && !willBeVisible) {
+                        _moveAssignmentsBackToWorkers(role, isDayShift ? 'Päivävuoro' : 'Yövuoro');
+                      }
+                      
                       _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                      
+                      // INSTANT UPDATE - Update main UI immediately
+                      if (mounted) {
+                        setState(() {});
+                      }
                     },
                   ),
                   // Profession name
@@ -807,6 +939,11 @@ class _WeekViewState extends State<WeekView> {
                         rows[role] = (rows[role]! - 1).clamp(1, 4);
                       });
                       _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                      
+                      // INSTANT UPDATE - Update main UI immediately
+                      if (mounted) {
+                        setState(() {});
+                      }
                     } : null,
                     icon: const Icon(Icons.remove, size: 16),
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -828,6 +965,11 @@ class _WeekViewState extends State<WeekView> {
                         rows[role] = (rows[role]! + 1).clamp(1, 4);
                       });
                       _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                      
+                      // INSTANT UPDATE - Update main UI immediately
+                      if (mounted) {
+                        setState(() {});
+                      }
                     } : null,
                     icon: const Icon(Icons.add, size: 16),
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -840,6 +982,37 @@ class _WeekViewState extends State<WeekView> {
         }).toList(),
       ),
     );
+  }
+
+  // Function to move assignments back to workers when profession is hidden
+  void _moveAssignmentsBackToWorkers(EmployeeRole hiddenRole, String shiftType) {
+    final assignmentsToRemove = <String>[];
+    
+    // Find all assignments for the hidden profession in current week
+    for (final entry in _assignments.entries) {
+      final parsed = _parseAssignmentKey(entry.key);
+      if (parsed != null && 
+          parsed['weekNumber'] == widget.weekNumber && 
+          parsed['profession'] == hiddenRole &&
+          parsed['shiftTitle'].contains(shiftType)) {
+        assignmentsToRemove.add(entry.key);
+      }
+    }
+    
+    // Remove the assignments (this moves them back to workers list)
+    for (final key in assignmentsToRemove) {
+      _assignments.remove(key);
+    }
+    
+    // Save the updated assignments
+    _saveAssignments();
+    
+    // Update UI
+    if (mounted) {
+      setState(() {});
+    }
+    
+    print('Moved ${assignmentsToRemove.length} assignments back to workers for hidden profession: ${hiddenRole.name}');
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
@@ -855,6 +1028,7 @@ class _WeekViewState extends State<WeekView> {
       case EmployeeRole.tarvike: return 'TARVIKE';
       case EmployeeRole.pora: return 'PORA';
       case EmployeeRole.huolto: return 'HUOLTO';
+      case EmployeeRole.custom: return 'CUSTOM';
     }
   }
 
@@ -1203,7 +1377,7 @@ class _WeekViewState extends State<WeekView> {
                     ),
                           const SizedBox(width: 2), // Reduced spacing
                           Text(
-                        _getCategoryDisplayName(category),
+                        '${_getCategoryDisplayName(category)} (${availableEmployees.length})',
                             style: TextStyle(
                               color: _getTextColorForCategory(category),
                               fontSize: 9, // Smaller text
@@ -1241,21 +1415,8 @@ class _WeekViewState extends State<WeekView> {
           // Add employee cards if not collapsed (show even if empty)
           if (!isCollapsed) {
             if (availableEmployees.isEmpty) {
-              // Show empty state
-              allGroupWidgets.add(
-                Container(
-                  margin: const EdgeInsets.only(bottom: 2),
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    'Ei työntekijöitä tässä kategoriassa',
-                    style: const TextStyle(
-                      color: Color(0xFF5C6B73), // Payne's gray
-                      fontSize: 11,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              );
+              // No longer show empty state message - worker count is shown in header
+              // Just show empty space for this category
                          } else {
                // Show employee cards - ONE PER ROW
                for (final employee in availableEmployees) {
@@ -1441,29 +1602,29 @@ class _WeekViewState extends State<WeekView> {
       key: ValueKey('unified-shift-${widget.weekNumber}-$_currentTabIndex'),
       child: Container(
         decoration: const BoxDecoration(
-        color: Colors.white,
+          color: Colors.white,
           border: Border.fromBorderSide(BorderSide(color: Color(0xFF9DB4C0), width: 1)),
         ),
-            child: Row(
+        child: Row(
           key: ValueKey('shift-row-$_currentTabIndex'),
-              children: [
-                // Profession labels for current shift
-                Container(
+          children: [
+            // Profession labels for current shift
+            Container(
               key: const ValueKey('profession-labels'),
               width: 32, // Compact width to save space
               color: const Color(0xFF9DB4C0), // Cadet gray from palette
-                  child: Column(
-                    children: _currentTabIndex == 0 
-                        ? _buildDayShiftProfessionLabels()
-                        : _buildNightShiftProfessionLabels(),
-                  ),
-                ),
-                // Calendar grid for current shift
-                Expanded(
-                  child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
-                ),
-              ],
+              child: Column(
+                children: _currentTabIndex == 0 
+                    ? _buildDayShiftProfessionLabels()
+                    : _buildNightShiftProfessionLabels(),
+              ),
             ),
+            // Calendar grid for current shift
+            Expanded(
+              child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1541,6 +1702,8 @@ class _WeekViewState extends State<WeekView> {
         return 'PR';
       case EmployeeRole.huolto:
         return 'HU';
+      case EmployeeRole.custom:
+        return 'CU';
     }
   }
 
@@ -2108,7 +2271,7 @@ class _WeekViewState extends State<WeekView> {
   double _calculateCalendarHeight() {
     const double rowHeight = 25.2;
     
-    // Calculate total rows for current shift
+    // Calculate total rows for current shift ONLY (not both!)
     int totalRows = 0;
     if (_currentTabIndex == 0) {
       // Day shift
@@ -2144,13 +2307,13 @@ class _WeekViewState extends State<WeekView> {
       child: Scaffold(
         backgroundColor: const Color(0xFFE0FBFC), // Light cyan background
         body: SafeArea(
-        child: Column(
-          children: [
+          child: Column(
+            children: [
               // Combined week navigation + tabs bar
-          Container(
+              Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.all(2), // Reduced from 4
-            decoration: BoxDecoration(
+                decoration: BoxDecoration(
                   color: const Color(0xFF253237), // Gunmetal
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                 ),
@@ -2185,7 +2348,7 @@ class _WeekViewState extends State<WeekView> {
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-              color: Colors.white,
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -2213,16 +2376,16 @@ class _WeekViewState extends State<WeekView> {
                     ),
                     // Day/Night shift tabs
                     Expanded(
-            child: Row(
-              children: [
+                      child: Row(
+                        children: [
                           // Day shift tab
                           Expanded(
                             child: GestureDetector(
                               onTap: () {
-                        if (_currentTabIndex != 0) {
-                          setState(() => _currentTabIndex = 0);
-                        }
-                      },
+                                if (_currentTabIndex != 0) {
+                                  setState(() => _currentTabIndex = 0);
+                                }
+                              },
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: _currentTabIndex == 0 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0), 
@@ -2250,10 +2413,10 @@ class _WeekViewState extends State<WeekView> {
                           Expanded(
                             child: GestureDetector(
                               onTap: () {
-                        if (_currentTabIndex != 1) {
-                          setState(() => _currentTabIndex = 1);
-                        }
-                      },
+                                if (_currentTabIndex != 1) {
+                                  setState(() => _currentTabIndex = 1);
+                                }
+                              },
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: _currentTabIndex == 1 ? const Color(0xFF5C6B73) : const Color(0xFF9DB4C0),
@@ -2280,12 +2443,12 @@ class _WeekViewState extends State<WeekView> {
                         ],
                       ),
                     ),
-                    // 🔥 YEARLY VIEW BUTTON - RIGHT SIDE OF BAR!
+                    // YEARLY VIEW BUTTON - RIGHT SIDE OF BAR!
                     SizedBox(
                       width: 32,
                       child: IconButton(
                         onPressed: () {
-                          widget.onViewChanged?.call('VUOSI'); // 🔥 FIXED PARAMETER!
+                          widget.onViewChanged?.call('VUOSI'); // FIXED PARAMETER!
                           HapticFeedback.lightImpact();
                         },
                         icon: const Icon(Icons.calendar_view_month, size: 14, color: Colors.white),
@@ -2298,7 +2461,7 @@ class _WeekViewState extends State<WeekView> {
               ),
               
               // Compact day header
-                Container(
+              Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // Reduced margins
                 decoration: BoxDecoration(
@@ -2309,56 +2472,56 @@ class _WeekViewState extends State<WeekView> {
                   children: [
                     SizedBox(
                       width: 32, // Reduced from 44
-                  child: IconButton(
+                      child: IconButton(
                         icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
-                    onPressed: _showProfessionEditDialog,
-                    padding: EdgeInsets.zero,
-                  ),
+                        onPressed: _showProfessionEditDialog,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: _buildDayHeaders(dates),
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Row(
-                    children: _buildDayHeaders(dates),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
+              ),
+              
               // Calendar section with dynamic height - no top margin
               Container(
                 height: _calculateCalendarHeight(),
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No top margin
-              child: _buildUnifiedShiftView(shiftTitles),
-          ),
+                child: _buildUnifiedShiftView(shiftTitles),
+              ),
 
-          // Show workers button when section is hidden
-          if (!_showWorkerSection) Container(
+              // Show workers button when section is hidden
+              if (!_showWorkerSection) Container(
                 height: 28, // Reduced from 32
-                margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
-            decoration: BoxDecoration(
+                margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // FIXED: No bottom margin to remove gap
+                decoration: BoxDecoration(
                   color: const Color(0xFFC2DFE3), // Light blue
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
-            ),
-            child: Center(
-              child: TextButton.icon(
-                onPressed: () => setState(() => _showWorkerSection = true),
+                ),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _showWorkerSection = true),
                     icon: const Icon(Icons.visibility, size: 12), // Smaller icon
                     label: const Text('Show Workers', style: TextStyle(fontSize: 10)), // Smaller text
-                style: TextButton.styleFrom(
+                    style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFF253237), // Gunmetal text
                       padding: EdgeInsets.zero, // Remove padding
                       minimumSize: const Size(0, 0), // Remove minimum size
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
 
-              // Worker list - takes remaining space
+              // Worker list - takes remaining space - FIXED: No top margin to remove gap
               if (_showWorkerSection) Expanded(
                 child: Container(
-                  margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // Reduced margins
-            decoration: BoxDecoration(
-              color: Colors.white,
+                  margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // FIXED: No top margin to remove gap
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
                   ),
                   child: Padding(
@@ -2366,10 +2529,10 @@ class _WeekViewState extends State<WeekView> {
                     child: _buildFullWidthEmployeeGrid(),
                   ),
                 ),
-                      ),
-                    ],
-                  ),
-                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2461,7 +2624,7 @@ class _WeekViewState extends State<WeekView> {
                 ),
               ),
               Text(
-                date.day.toString(),
+                '${date.day}.${date.month}',
                 style: const TextStyle(
                   fontSize: 8, // Reduced from 10
                   color: Color(0xFF5C6B73), // Payne's gray

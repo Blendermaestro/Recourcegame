@@ -37,8 +37,9 @@ class _YearViewState extends State<YearView> {
   @override
   void initState() {
     super.initState();
-    _currentWeek = widget.initialWeek;
-    _pageController = PageController(initialPage: widget.initialWeek - 1);
+    _currentWeek = widget.initialWeek > 0 ? widget.initialWeek : _getCurrentWeek(); // Start from current week if no initial week specified
+    _pageController = PageController(initialPage: _currentWeek - 1);
+    _loadCustomProfessions(); // Load custom professions first
     _loadEmployees();
     _loadAssignments();
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
@@ -163,6 +164,19 @@ class _YearViewState extends State<YearView> {
     }
   }
 
+  Future<void> _loadCustomProfessions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString('custom_professions');
+      if (jsonString != null) {
+        final json = jsonDecode(jsonString);
+        CustomProfessionManager.fromJson(json);
+      }
+    } catch (e) {
+      print('Year View: Error loading custom professions: $e');
+    }
+  }
+
   static Map<EmployeeRole, bool> _getDefaultDayShiftProfessions() => {
     EmployeeRole.tj: true,
     EmployeeRole.varu1: true,
@@ -175,6 +189,7 @@ class _YearViewState extends State<YearView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: true,
     EmployeeRole.huolto: true,
+    EmployeeRole.custom: false,
   };
   
   static Map<EmployeeRole, bool> _getDefaultNightShiftProfessions() => {
@@ -189,6 +204,7 @@ class _YearViewState extends State<YearView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: false,
     EmployeeRole.huolto: false,
+    EmployeeRole.custom: false,
   };
   
   static Map<EmployeeRole, int> _getDefaultDayShiftRows() => {
@@ -203,6 +219,7 @@ class _YearViewState extends State<YearView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.custom: 1,
   };
   
   static Map<EmployeeRole, int> _getDefaultNightShiftRows() => {
@@ -217,6 +234,7 @@ class _YearViewState extends State<YearView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.custom: 1,
   };
 
   Map<EmployeeRole, bool> _getDayShiftProfessions(int weekNumber) {
@@ -294,28 +312,52 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildWeekPage(int weekNumber) {
     final shiftTitles = _getShiftTitlesForWeek(weekNumber);
-    final dates = _getDatesForWeek(weekNumber);
     
-    return Column(
-      children: [
-        // Week header with dates
-        _buildWeekHeader(weekNumber, dates),
-        // Vertically stacked shifts
-        Expanded(
-          child: Column(
-            children: [
-              // Day shift (top)
-              Expanded(
-                child: _buildShiftView(weekNumber, shiftTitles[0], true),
-              ),
-              // Night shift (bottom)
-              Expanded(
-                child: _buildShiftView(weekNumber, shiftTitles[1], false),
-              ),
-            ],
+    // Calculate day shift total rows first
+    final dayProfessions = _getDayShiftProfessions(weekNumber);
+    final dayRows = _getDayShiftRows(weekNumber);
+    final dayVisibleProfessions = EmployeeRole.values
+        .where((role) => dayProfessions[role] == true)
+        .toList();
+    
+    int dayTotalRows = 0;
+    for (final profession in dayVisibleProfessions) {
+      dayTotalRows += dayRows[profession] ?? 1;
+    }
+    
+    // Calculate night shift total rows
+    final nightProfessions = _getNightShiftProfessions(weekNumber);
+    final nightRows = _getNightShiftRows(weekNumber);
+    final nightVisibleProfessions = EmployeeRole.values
+        .where((role) => nightProfessions[role] == true)
+        .toList();
+    
+    int nightTotalRows = 0;
+    for (final profession in nightVisibleProfessions) {
+      nightTotalRows += nightRows[profession] ?? 1;
+    }
+    
+    const rowHeight = 20.0;
+    final dayShiftHeight = (dayTotalRows * rowHeight) + 30; // 30px for header
+    final nightShiftHeight = (nightTotalRows * rowHeight) + 30; // 30px for header
+    
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Day shift
+          Container(
+            height: dayShiftHeight,
+            child: _buildShiftView(weekNumber, shiftTitles[0], true),
           ),
-        ),
-      ],
+          // Night shift - NO GAP, starts immediately after day shift
+          Container(
+            height: nightShiftHeight,
+            child: _buildShiftView(weekNumber, shiftTitles[1], false),
+          ),
+          // Add some bottom padding for scroll
+          const SizedBox(height: 20),
+        ],
+      ),
     );
   }
 
@@ -323,7 +365,7 @@ class _YearViewState extends State<YearView> {
     const List<String> weekdays = ['TI', 'KE', 'TO', 'PE', 'LA', 'SU', 'MA'];
     
     return Container(
-      height: 40,
+      height: 32, // Reduced from 40 to match week view
       margin: const EdgeInsets.fromLTRB(2, 0, 2, 2),
       decoration: BoxDecoration(
         color: const Color(0xFFC2DFE3),
@@ -331,15 +373,15 @@ class _YearViewState extends State<YearView> {
       ),
       child: Row(
         children: [
-          // Profession header space
+          // Profession header space - REMOVED "ROLE" TEXT
           Container(
-            width: 50, // 🔥 MORE COMPACT!
+            width: 50, // Reduced from 75 for more compact design
             child: const Center(
               child: Text(
-                'ROLE',
+                '', // Empty - no more "ROLE" text
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 9, // 🔥 MORE COMPACT!
+                  fontSize: 9,
                   color: Color(0xFF253237),
                 ),
               ),
@@ -362,14 +404,14 @@ class _YearViewState extends State<YearView> {
                           weekdays[index],
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            fontSize: 11,
+                            fontSize: 10, // Reduced from 11
                             color: Color(0xFF253237),
                           ),
                         ),
                         Text(
-                          date.day.toString(),
+                          '${date.day}.${date.month}',
                           style: const TextStyle(
-                            fontSize: 9,
+                            fontSize: 8, // Reduced from 9
                             color: Color(0xFF5C6B73),
                           ),
                         ),
@@ -386,8 +428,13 @@ class _YearViewState extends State<YearView> {
   }
 
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
-    const rowHeight = 16.0; // 🔥 COMPACT FOR YEAR VIEW!
-    final dayWidth = (MediaQuery.of(context).size.width - 50 - 12) / 7; // 🔥 MORE COMPACT!
+    const rowHeight = 20.0; // Reduced from 24.0 to fit more content
+    final screenWidth = MediaQuery.of(context).size.width;
+    final professionColumnWidth = 50.0;
+    final containerMargins = 4.0; // 2px left + 2px right from container margins
+    final borderWidth = 2.0; // 1px left + 1px right from container borders
+    final availableGridWidth = screenWidth - professionColumnWidth - containerMargins - borderWidth;
+    final dayWidth = availableGridWidth / 7; // Precise calculation
     
     final professions = isDayShift 
         ? _getDayShiftProfessions(weekNumber)
@@ -396,7 +443,7 @@ class _YearViewState extends State<YearView> {
         ? _getDayShiftRows(weekNumber)
         : _getNightShiftRows(weekNumber);
     
-    // 🔥 SHOW ALL CONFIGURED PROFESSION ROWS!
+    // Use EXACT same ordering as week view
     final visibleProfessions = EmployeeRole.values
         .where((role) => professions[role] == true)
         .toList();
@@ -406,7 +453,11 @@ class _YearViewState extends State<YearView> {
       totalRows += rows[profession] ?? 1;
     }
     
+    // Ensure minimum height to prevent overlap
+    final minShiftHeight = (totalRows * rowHeight) + 30; // Add 30px for header + spacing
+    
     return Container(
+      height: minShiftHeight, // Fixed height based on content
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
       ),
@@ -414,19 +465,19 @@ class _YearViewState extends State<YearView> {
         children: [
           // Shift title - MATCH WEEK VIEW COLORS!
           Container(
-            height: 20, // 🔥 MORE COMPACT!
-            color: const Color(0xFF5C6B73), // 🔥 MATCH WEEK VIEW ACTIVE TAB COLOR!
+            height: 24, // Reduced from 28 for more compact design
+            color: const Color(0xFF5C6B73), // MATCH WEEK VIEW ACTIVE TAB COLOR!
             child: Row(
               children: [
-                Container(width: 50), // 🔥 MORE COMPACT!
+                Container(width: 50), // Reduced from 75 to match header
                 Expanded(
                   child: Center(
                       child: Text(
                       shiftTitle,
                       style: const TextStyle(
-                        fontSize: 10, // 🔥 MORE COMPACT!
+                        fontSize: 10, // Reduced from 11 for more compact
                         fontWeight: FontWeight.bold, 
-                        color: Colors.white // 🔥 WHITE TEXT ON DARK BACKGROUND!
+                        color: Colors.white // WHITE TEXT ON DARK BACKGROUND!
                       ),
                     ),
                   ),
@@ -439,9 +490,9 @@ class _YearViewState extends State<YearView> {
             child: Row(
               children: [
                 // Profession labels column
-                Container(
-                  width: 50, // 🔥 MORE COMPACT!
-                  child: Column(
+                SizedBox(
+                  width: 50, // Reduced from 75 for more compact design
+                  child: Column( // Remove scroll for profession labels to prevent misalignment
                     children: _buildProfessionLabels(visibleProfessions, rows, rowHeight),
                   ),
                 ),
@@ -451,22 +502,23 @@ class _YearViewState extends State<YearView> {
                     children: [
                       // Grid background
                       Column(
-                                              children: List.generate(totalRows, (row) => 
-                        Container(
-                          height: rowHeight,
-                          child: Row(
-                            children: List.generate(7, (day) => 
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey[200]!, width: 0.3), // 🔥 THINNER BORDERS!
+                        children: List.generate(totalRows, (row) => 
+                          Container(
+                            height: rowHeight,
+                            child: Row(
+                              children: List.generate(7, (day) => 
+                                Expanded(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white, // White background for year view
+                                      border: Border.all(color: Colors.grey[400]!, width: 1), // Thicker borders for better alignment reference
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
                       ),
                       // Assignment blocks
                       ..._buildShiftAssignmentBlocks(weekNumber, shiftTitle, dayWidth, rowHeight),
@@ -482,36 +534,57 @@ class _YearViewState extends State<YearView> {
   }
 
   List<Widget> _buildProfessionLabels(List<EmployeeRole> visibleProfessions, Map<EmployeeRole, int> rows, double rowHeight) {
-    final List<Widget> labels = [];
-    
-    for (final profession in visibleProfessions) {
+    // Use the EXACT same logic as week view with EmployeeRole.values ordering
+    return EmployeeRole.values.where((role) => visibleProfessions.contains(role)).expand((profession) {
       final professionRows = rows[profession] ?? 1;
-      
-      for (int rowIndex = 0; rowIndex < professionRows; rowIndex++) {
-        labels.add(
-          Container(
-            height: rowHeight,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[300]!, width: 0.5),
-              ),
-              color: rowIndex % 2 == 0 ? Colors.grey[100] : Colors.grey[50],
-            ),
-            child: Text(
-              _getFullProfessionName(profession, rowIndex), // 🔥 SHOW FULL PROFESSION NAMES!
-              style: TextStyle(
-                fontSize: 7, // 🔥 SMALLER TO FIT FULL NAMES!
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
+      return List.generate(professionRows, (index) => Container(
+        height: rowHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFF5C6B73), // SAME COLOR AS SHIFT HEADERS
+          border: Border(bottom: BorderSide(color: const Color(0xFF253237), width: 0.5)), // Darker border
+        ),
+        child: Text(
+          _getCompactRoleName(profession), // Use EXACT same naming as week view
+          style: const TextStyle(
+            color: Colors.white, // White text on dark background
+            fontSize: 7, // Reduced from 8 to fit narrower column
+            fontWeight: FontWeight.w600,
           ),
-        );
-      }
+          textAlign: TextAlign.center,
+        ),
+      ));
+    }).toList();
+  }
+
+  // EXACT same function as week view
+  String _getCompactRoleName(EmployeeRole role) {
+    switch (role) {
+      case EmployeeRole.tj:
+        return 'TJ';
+      case EmployeeRole.varu1:
+        return 'V1';
+      case EmployeeRole.varu2:
+        return 'V2';
+      case EmployeeRole.varu3:
+        return 'V3';
+      case EmployeeRole.varu4:
+        return 'V4';
+      case EmployeeRole.pasta1:
+        return 'P1';
+      case EmployeeRole.pasta2:
+        return 'P2';
+      case EmployeeRole.ict:
+        return 'ICT';
+      case EmployeeRole.tarvike:
+        return 'TR';
+      case EmployeeRole.pora:
+        return 'PR';
+      case EmployeeRole.huolto:
+        return 'HU';
+      case EmployeeRole.custom:
+        return 'CU';
     }
-    
-    return labels;
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
@@ -527,37 +600,9 @@ class _YearViewState extends State<YearView> {
       case EmployeeRole.tarvike: return 'TARVIKE';
       case EmployeeRole.pora: return 'PORA';
       case EmployeeRole.huolto: return 'HUOLTO';
+      case EmployeeRole.custom: return 'CUSTOM';
     }
   }
-
-  // 🔥 NEW: Generate full profession names with row numbers
-  String _getFullProfessionName(EmployeeRole role, int rowIndex) {
-    final baseNames = {
-      EmployeeRole.tj: 'TJ',
-      EmployeeRole.varu1: 'VARU',
-      EmployeeRole.varu2: 'VARU',
-      EmployeeRole.varu3: 'VARU',
-      EmployeeRole.varu4: 'VARU',
-      EmployeeRole.pasta1: 'PASTA',
-      EmployeeRole.pasta2: 'PASTA',
-      EmployeeRole.ict: 'ICT',
-      EmployeeRole.tarvike: 'TARVIKE',
-      EmployeeRole.pora: 'PORA',
-      EmployeeRole.huolto: 'HUOLTO',
-    };
-    
-    final baseName = baseNames[role] ?? role.name.toUpperCase();
-    
-    // For single-character bases, add the row number
-    if (baseName == 'TJ' || baseName == 'ICT' || baseName == 'TARVIKE' || baseName == 'PORA' || baseName == 'HUOLTO') {
-      return rowIndex == 0 ? baseName : '$baseName${rowIndex + 1}';
-    } else {
-      // For VARU and PASTA, always show the number
-      return '$baseName${rowIndex + 1}';
-    }
-  }
-
-
 
   // 🔥 PROFESSION-BASED STORAGE SYSTEM - NO MORE LANE MISALIGNMENT! 🔥
   
@@ -660,10 +705,10 @@ class _YearViewState extends State<YearView> {
           
           blocks.add(
             Positioned(
-              left: startDay * dayWidth,
-              top: absoluteLane * rowHeight,
-              width: (dayWidth * duration) - 0.5, // 🔥 SMALLER GAP FOR COMPACT VIEW!
-              height: rowHeight - 0.5, // 🔥 SMALLER GAP FOR COMPACT VIEW!
+              left: startDay * dayWidth + 1, // Account for left border of first cell
+              top: absoluteLane * rowHeight + 1, // Account for top border of cell
+              width: (dayWidth * duration) - 2, // Account for both side borders
+              height: rowHeight - 2, // Account for both top/bottom borders  
               child: _buildAssignmentBlock(entry.value),
             ),
           );
@@ -679,32 +724,40 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildAssignmentBlock(Employee employee) {
     return Container(
-      margin: const EdgeInsets.all(0.3), // 🔥 SMALLER MARGINS FOR COMPACT VIEW!
+      width: double.infinity, // Ensure full width
+      height: double.infinity, // Ensure full height
       decoration: BoxDecoration(
-        color: _getCategoryColor(employee.category), // 🔥 EXACT SAME COLORS AS WEEK VIEW!
-        borderRadius: BorderRadius.circular(2), // 🔥 SMALLER RADIUS FOR COMPACT!
-        border: Border.all(color: Colors.grey[400]!, width: 0.3), // 🔥 THINNER BORDER!
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 0.5, // 🔥 SMALLER SHADOW!
-            offset: const Offset(0.3, 0.3),
-          ),
-        ],
+        color: _getCategoryColor(employee.category),
+        borderRadius: BorderRadius.circular(1), // Minimal radius for sharp edges
+        border: Border.all(color: Colors.grey[800]!, width: 0.3), // Thin, dark border
       ),
       child: Center(
-        child: Text(
-          employee.name,
-          style: TextStyle(
-            fontSize: 8, // 🔥 SMALLER FOR COMPACT VIEW!
-            color: _getTextColorForCategory(employee.category), // 🔥 SAME TEXT COLORS!
-            fontWeight: FontWeight.w600,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 1), // Minimal padding
+          child: Text(
+            employee.name,
+            style: TextStyle(
+              fontSize: 8, // Appropriate size for compact view
+              color: _getTextColorForCategory(employee.category),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
+  }
+
+  // Calculate current week of year
+  int _getCurrentWeek() {
+    final now = DateTime.now();
+    final startOfYear = DateTime(now.year, 1, 1);
+    final firstMonday = startOfYear.subtract(Duration(days: startOfYear.weekday - 1));
+    final difference = now.difference(firstMonday).inDays;
+    final currentWeek = (difference / 7).floor() + 1;
+    return currentWeek.clamp(1, 52);
   }
 
   @override
@@ -714,87 +767,87 @@ class _YearViewState extends State<YearView> {
       body: SafeArea(
         child: Column(
           children: [
-            // Year view header
+            // Fixed header with navigation
             Container(
-              height: 40,
-              margin: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
+              height: 40, // Reduced from 60 to match week view compactness
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Reduced padding
+              decoration: BoxDecoration(
                 color: const Color(0xFF253237),
                 border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
               ),
               child: Row(
                 children: [
-                  // Back to week view (preserve current week)
-                  SizedBox(
-                    width: 40,
-                    child: IconButton(
-                      onPressed: () {
-                        widget.onWeekChanged?.call(_currentWeek);
-                        widget.onViewChanged?.call('VIIKKO');
-                      },
-                      icon: const Icon(Icons.arrow_back, size: 16, color: Colors.white),
-                      padding: EdgeInsets.zero,
-                      tooltip: 'Back to Week $_currentWeek',
-                    ),
+                  IconButton(
+                    onPressed: () => widget.onViewChanged?.call('VIIKKO'),
+                    icon: const Icon(Icons.arrow_back, size: 16, color: Colors.white), // Smaller icon
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Back to Week View',
                   ),
-                  // Current week indicator
+                  const SizedBox(width: 8), // Reduced spacing
                   Expanded(
-                    child: Center(
-                      child: Text(
-                        'WEEK $_currentWeek OVERVIEW',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                    child: Text(
+                      '2025 - VIIKKO $_currentWeek', // New format
+                      style: const TextStyle(
+                        fontSize: 14, // Reduced from 18
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
-                  // EDIT WEEK button - bright and obvious
-                  Container(
-                    width: 80,
-                    height: 32,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF5C6B73),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.white, width: 1),
+                  // Current week button
+                  IconButton(
+                    onPressed: () {
+                      final currentWeek = _getCurrentWeek();
+                      setState(() {
+                        _currentWeek = currentWeek;
+                      });
+                      _pageController.animateToPage(
+                        currentWeek - 1,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                      widget.onWeekChanged?.call(currentWeek);
+                      HapticFeedback.lightImpact();
+                    },
+                    icon: const Icon(Icons.today, size: 16, color: Colors.white),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Go to Current Week',
+                  ),
+                  const SizedBox(width: 8), // Reduced spacing
+                  TextButton(
+                    onPressed: () => widget.onViewChanged?.call('VIIKKO'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Compact padding
+                      minimumSize: Size.zero,
                     ),
-                    child: InkWell(
-                      onTap: () {
-                        widget.onWeekChanged?.call(_currentWeek);
-                        widget.onViewChanged?.call('VIIKKO');
-                      },
-                      borderRadius: BorderRadius.circular(4),
-                      child: const Center(
-                        child: Text(
-                          'EDIT',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                    child: const Text(
+                      'EDIT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12, // Smaller text
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            // Swipeable weeks
+            // Scrollable content area
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
-                onPageChanged: (int page) {
+                onPageChanged: (index) {
                   setState(() {
-                    _currentWeek = page + 1;
+                    _currentWeek = index + 1;
                   });
                   widget.onWeekChanged?.call(_currentWeek);
-                  HapticFeedback.lightImpact(); // Haptic feedback for smooth feel
+                  HapticFeedback.lightImpact();
                 },
                 itemCount: 52,
                 itemBuilder: (context, index) {
-                  return _buildWeekPage(index + 1);
+                  final weekNumber = index + 1;
+                  return _buildWeekPage(weekNumber);
                 },
               ),
             ),

@@ -20,6 +20,7 @@ enum EmployeeRole {
   tarvike,
   pora,
   huolto,
+  custom,   // Special role for custom professions
 }
 
 enum ShiftCycle {
@@ -238,5 +239,89 @@ class Employee {
       shiftCycle: shiftCycle ?? this.shiftCycle,
       vacations: vacations ?? this.vacations,
     );
+  }
+}
+
+// Custom profession manager class
+class CustomProfession {
+  final String id;
+  final String name;
+  final String shortName;
+  final bool defaultDayVisible;
+  final bool defaultNightVisible;
+  final int defaultRows;
+
+  const CustomProfession({
+    required this.id,
+    required this.name,
+    required this.shortName,
+    this.defaultDayVisible = true,
+    this.defaultNightVisible = true,
+    this.defaultRows = 1,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'shortName': shortName,
+      'defaultDayVisible': defaultDayVisible,
+      'defaultNightVisible': defaultNightVisible,
+      'defaultRows': defaultRows,
+    };
+  }
+
+  factory CustomProfession.fromJson(Map<String, dynamic> json) {
+    return CustomProfession(
+      id: json['id'],
+      name: json['name'],
+      shortName: json['shortName'],
+      defaultDayVisible: json['defaultDayVisible'] ?? true,
+      defaultNightVisible: json['defaultNightVisible'] ?? true,
+      defaultRows: json['defaultRows'] ?? 1,
+    );
+  }
+}
+
+// Custom profession manager
+class CustomProfessionManager {
+  static final Map<String, CustomProfession> _customProfessions = {};
+  
+  static List<CustomProfession> get allCustomProfessions => _customProfessions.values.toList();
+  
+  static void addCustomProfession(CustomProfession profession) {
+    _customProfessions[profession.id] = profession;
+  }
+  
+  static void removeCustomProfession(String id) {
+    _customProfessions.remove(id);
+  }
+  
+  static CustomProfession? getCustomProfession(String id) {
+    return _customProfessions[id];
+  }
+  
+  static bool hasCustomProfession(String id) {
+    return _customProfessions.containsKey(id);
+  }
+  
+  static void clearAll() {
+    _customProfessions.clear();
+  }
+  
+  static Map<String, dynamic> toJson() {
+    return {
+      'customProfessions': _customProfessions.map((key, value) => MapEntry(key, value.toJson())),
+    };
+  }
+  
+  static void fromJson(Map<String, dynamic> json) {
+    _customProfessions.clear();
+    if (json['customProfessions'] != null) {
+      final Map<String, dynamic> profs = json['customProfessions'];
+      for (final entry in profs.entries) {
+        _customProfessions[entry.key] = CustomProfession.fromJson(entry.value);
+      }
+    }
   }
 } 
