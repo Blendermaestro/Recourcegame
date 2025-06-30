@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:calendar_app/data/default_employees.dart';
 import 'package:calendar_app/models/employee.dart';
+import 'package:calendar_app/models/vacation_absence.dart';
+import 'package:calendar_app/data/vacation_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -12,7 +13,7 @@ class EmployeeSettingsView extends StatefulWidget {
 }
 
 class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
-  List<Employee> _employees = [];
+  List<Employee> employees = [];
 
   @override
   void initState() {
@@ -22,378 +23,611 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
 
   Future<void> _loadEmployees() async {
     final prefs = await SharedPreferences.getInstance();
-    final employeesJson = prefs.getString('employees');
+    final employeesJson = prefs.getString('employees') ?? '[]';
+    final List<dynamic> employeesList = json.decode(employeesJson);
     
-    if (employeesJson != null) {
-      final List<dynamic> employeesList = json.decode(employeesJson);
-      setState(() {
-        _employees = employeesList.map((e) => Employee.fromJson(e)).toList();
-      });
-      // Update global list
-      defaultEmployees.clear();
-      defaultEmployees.addAll(_employees);
-    } else {
-      setState(() {
-        _employees = List.from(defaultEmployees);
-      });
-    }
+    setState(() {
+      employees = employeesList.map((emp) => Employee.fromJson(emp)).toList();
+    });
   }
 
   Future<void> _saveEmployees() async {
     final prefs = await SharedPreferences.getInstance();
-    final employeesJson = json.encode(_employees.map((e) => e.toJson()).toList());
+    final employeesJson = json.encode(employees.map((emp) => emp.toJson()).toList());
     await prefs.setString('employees', employeesJson);
-    
-    // Update global list
-    defaultEmployees.clear();
-    defaultEmployees.addAll(_employees);
-  }
-
-  void _editEmployee(Employee employee) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return _EmployeeEditDialog(
-          employee: employee,
-          onSave: (updatedEmployee) async {
-            setState(() {
-              final index = _employees.indexWhere((e) => e.id == employee.id);
-              if (index != -1) {
-                _employees[index] = updatedEmployee;
-              }
-            });
-            await _saveEmployees();
-          },
-        );
-      },
-    );
   }
 
   void _addEmployee() {
+    _showEmployeeDialog(null);
+  }
+
+  void _editEmployee(Employee employee) {
+    _showEmployeeDialog(employee);
+  }
+
+  void _showEmployeeDialog(Employee? employee) {
+    final nameController = TextEditingController(text: employee?.name ?? '');
+    EmployeeCategory selectedCategory = employee?.category ?? EmployeeCategory.sijainen;
+    EmployeeType selectedType = employee?.type ?? EmployeeType.sijainen;
+    EmployeeRole selectedRole = employee?.role ?? EmployeeRole.varu1;
+    ShiftCycle selectedShiftCycle = employee?.shiftCycle ?? ShiftCycle.none;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return _EmployeeEditDialog(
-          employee: Employee(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: '',
-            category: EmployeeCategory.sijainen,
-            type: EmployeeType.sijainen,
-            role: EmployeeRole.varu1,
-            shiftCycle: ShiftCycle.none,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(employee == null ? 'Add Employee' : 'Edit Employee'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<EmployeeCategory>(
+                  value: selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: EmployeeCategory.values.map((cat) {
+                    return DropdownMenuItem(
+                      value: cat,
+                      child: Text(_getCategoryName(cat)),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedCategory = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<EmployeeType>(
+                  value: selectedType,
+                  decoration: const InputDecoration(
+                    labelText: 'Type',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: EmployeeType.values.map((type) {
+                    return DropdownMenuItem(
+                      value: type,
+                      child: Text(type.name),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedType = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<EmployeeRole>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(
+                    labelText: 'Role',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: EmployeeRole.values.map((role) {
+                    return DropdownMenuItem(
+                      value: role,
+                      child: Text(role.name),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedRole = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<ShiftCycle>(
+                  value: selectedShiftCycle,
+                  decoration: const InputDecoration(
+                    labelText: 'Shift Cycle',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: ShiftCycle.values.map((cycle) {
+                    return DropdownMenuItem(
+                      value: cycle,
+                      child: Text(cycle.name),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedShiftCycle = value!;
+                    });
+                  },
+                ),
+              ],
+            ),
           ),
-          onSave: (newEmployee) async {
-            setState(() {
-              _employees.add(newEmployee);
-            });
-            await _saveEmployees();
-          },
-          isNewEmployee: true,
-        );
-      },
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (nameController.text.trim().isEmpty) return;
+                
+                final newEmployee = Employee(
+                  id: employee?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: nameController.text.trim(),
+                  category: selectedCategory,
+                  type: selectedType,
+                  role: selectedRole,
+                  shiftCycle: selectedShiftCycle,
+                );
+                
+                setState(() {
+                  if (employee == null) {
+                    employees.add(newEmployee);
+                  } else {
+                    final index = employees.indexWhere((emp) => emp.id == employee.id);
+                    if (index != -1) {
+                      employees[index] = newEmployee;
+                    }
+                  }
+                });
+                _saveEmployees();
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   void _deleteEmployee(Employee employee) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Poista työntekijä'),
-          content: Text('Haluatko varmasti poistaa työntekijän ${employee.name}?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Peruuta'),
-            ),
-            TextButton(
-              onPressed: () async {
-                setState(() {
-                  _employees.removeWhere((e) => e.id == employee.id);
-                });
-                await _saveEmployees();
-                Navigator.of(context).pop();
-              },
-              child: const Text('Poista', style: TextStyle(color: Color(0xFF5C6B73))), // Payne's gray
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Employee'),
+        content: Text('Delete ${employee.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                employees.removeWhere((emp) => emp.id == employee.id);
+              });
+              _saveEmployees();
+              Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 
-  String _getCategoryDisplayName(EmployeeCategory category) {
+  void _manageVacations(Employee employee) {
+    showDialog(
+      context: context,
+      builder: (context) => VacationDialog(employee: employee),
+    );
+  }
+
+  String _getCategoryName(EmployeeCategory category) {
     switch (category) {
-      case EmployeeCategory.ab: return 'Vakituiset A/B';
-      case EmployeeCategory.cd: return 'Vakituiset C/D';
-      case EmployeeCategory.huolto: return 'Huolto';
-      case EmployeeCategory.sijainen: return 'Sijaiset';
+      case EmployeeCategory.ab:
+        return 'Vakituiset A/B';
+      case EmployeeCategory.cd:
+        return 'Vakituiset C/D';
+      case EmployeeCategory.huolto:
+        return 'Huolto';
+      case EmployeeCategory.sijainen:
+        return 'Sijaiset';
     }
   }
 
   Color _getCategoryColor(EmployeeCategory category) {
     switch (category) {
       case EmployeeCategory.ab:
-        return const Color(0xFFE0FBFC); // Light cyan
+        return const Color(0xFF9DB4C0);
       case EmployeeCategory.cd:
-        return const Color(0xFFC2DFE3); // Light blue
+        return const Color(0xFF5C6B73);
       case EmployeeCategory.huolto:
-        return const Color(0xFF9DB4C0); // Cadet gray
+        return const Color(0xFF253237);
       case EmployeeCategory.sijainen:
-        return const Color(0xFF5C6B73); // Payne's gray
+        return const Color(0xFFBDBDBD);
     }
   }
 
-  Color _getTextColorForCategory(EmployeeCategory category) {
+  Color _getTextColor(EmployeeCategory category) {
     switch (category) {
       case EmployeeCategory.ab:
-      case EmployeeCategory.cd:
-        return const Color(0xFF253237); // Dark text on light backgrounds
-      case EmployeeCategory.huolto:
       case EmployeeCategory.sijainen:
-        return Colors.white; // White text on darker backgrounds
+        return Colors.black87;
+      case EmployeeCategory.cd:
+      case EmployeeCategory.huolto:
+        return Colors.white;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final Map<EmployeeCategory, List<Employee>> groupedEmployees = {};
-    for (final category in EmployeeCategory.values) {
-      groupedEmployees[category] = _employees.where((e) => e.category == category).toList();
+    final Map<EmployeeCategory, List<Employee>> employeesByCategory = {};
+    for (final employee in employees) {
+      employeesByCategory.putIfAbsent(employee.category, () => []).add(employee);
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFE0FBFC), // Light cyan background
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('Työntekijät'),
-        backgroundColor: const Color(0xFF253237), // Gunmetal
+        title: const Text('Employee Settings'),
+        backgroundColor: const Color(0xFF9DB4C0),
         foregroundColor: Colors.white,
-        elevation: 1,
         actions: [
-          ElevatedButton.icon(
+          IconButton(
             onPressed: _addEmployee,
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Lisää', style: TextStyle(fontSize: 12)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF5C6B73), // Payne's gray
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
+            icon: const Icon(Icons.add),
+            tooltip: 'Add Employee',
           ),
-          const SizedBox(width: 8),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(8),
-        children: [
-          ...EmployeeCategory.values.map((category) {
-            final employees = groupedEmployees[category] ?? [];
-            if (employees.isEmpty) return const SizedBox.shrink();
-            
-            return Column(
-              children: [
-                // Compact category header
-                Container(
-                  height: 32,
-                  margin: const EdgeInsets.only(bottom: 4),
-                  decoration: BoxDecoration(
-                    color: _getCategoryColor(category),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      Text(
-                        _getCategoryDisplayName(category),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _getTextColorForCategory(category),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${employees.length}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _getTextColorForCategory(category).withOpacity(0.7),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                  ),
-                ),
-                // Ultra-compact employee list
-                ...employees.map((employee) {
-                  return Container(
-                    height: 40,
-                    margin: const EdgeInsets.only(bottom: 2),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Employee Management',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF253237),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Total: ${employees.length} employees',
+              style: const TextStyle(
+                fontSize: 16,
+                color: Color(0xFF5C6B73),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ...EmployeeCategory.values.map((category) {
+              final categoryEmployees = employeesByCategory[category] ?? [];
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFF9DB4C0)), // Cadet gray border
-                      borderRadius: BorderRadius.circular(4),
+                      color: _getCategoryColor(category),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: _getCategoryColor(category),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              employee.name.isNotEmpty ? employee.name[0].toUpperCase() : '?',
-                              style: TextStyle(
-                                color: _getTextColorForCategory(category),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            employee.name,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF253237), // Gunmetal text
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => _editEmployee(employee),
-                          icon: const Icon(Icons.edit, size: 16, color: Color(0xFF9DB4C0)), // Cadet gray
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        ),
-                        IconButton(
-                          onPressed: () => _deleteEmployee(employee),
-                          icon: const Icon(Icons.delete, size: 16, color: Color(0xFF5C6B73)), // Payne's gray
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        ),
-                      ],
+                    child: Text(
+                      '${_getCategoryName(category)} (${categoryEmployees.length})',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: _getTextColor(category),
+                      ),
                     ),
-                  );
-                }),
-                const SizedBox(height: 8),
-              ],
-            );
-          }),
-        ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (categoryEmployees.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: const Text(
+                        'No employees in this category',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ...categoryEmployees.map((employee) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        title: Text(
+                          employee.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF253237),
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${employee.role.name} - ${employee.type.name}',
+                          style: const TextStyle(color: Color(0xFF5C6B73)),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              onPressed: () => _manageVacations(employee),
+                              icon: const Icon(Icons.calendar_today, color: Color(0xFF5C6B73)),
+                              tooltip: 'Manage Vacations',
+                            ),
+                            IconButton(
+                              onPressed: () => _editEmployee(employee),
+                              icon: const Icon(Icons.edit, color: Color(0xFF5C6B73)),
+                              tooltip: 'Edit',
+                            ),
+                            IconButton(
+                              onPressed: () => _deleteEmployee(employee),
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              tooltip: 'Delete',
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }).toList(),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _EmployeeEditDialog extends StatefulWidget {
+class VacationDialog extends StatefulWidget {
   final Employee employee;
-  final Function(Employee) onSave;
-  final bool isNewEmployee;
 
-  const _EmployeeEditDialog({
-    required this.employee,
-    required this.onSave,
-    this.isNewEmployee = false,
-  });
+  const VacationDialog({super.key, required this.employee});
 
   @override
-  State<_EmployeeEditDialog> createState() => _EmployeeEditDialogState();
+  State<VacationDialog> createState() => _VacationDialogState();
 }
 
-class _EmployeeEditDialogState extends State<_EmployeeEditDialog> {
-  late TextEditingController _nameController;
-  late EmployeeCategory _selectedCategory;
+class _VacationDialogState extends State<VacationDialog> {
+  List<VacationAbsence> vacations = [];
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.employee.name);
-    _selectedCategory = widget.employee.category;
+    _loadVacations();
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
+  void _loadVacations() {
+    setState(() {
+      vacations = VacationManager.getEmployeeVacations(widget.employee.id);
+    });
   }
 
-  void _save() {
-    if (_nameController.text.trim().isEmpty) return;
+  void _addVacation() {
+    DateTime? startDate;
+    DateTime? endDate;
+    VacationAbsenceType selectedType = VacationAbsenceType.loma;
 
-    final updatedEmployee = Employee(
-      id: widget.employee.id,
-      name: _nameController.text.trim(),
-      category: _selectedCategory,
-      type: _selectedCategory == EmployeeCategory.sijainen ? EmployeeType.sijainen : EmployeeType.vakityontekija,
-      role: EmployeeRole.varu1, // Default role
-      shiftCycle: _selectedCategory == EmployeeCategory.sijainen 
-          ? ShiftCycle.none 
-          : (_selectedCategory == EmployeeCategory.ab ? ShiftCycle.a : ShiftCycle.c),
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Vacation'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<VacationAbsenceType>(
+                value: selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Type',
+                  border: OutlineInputBorder(),
+                ),
+                items: VacationAbsenceType.values.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(type == VacationAbsenceType.loma ? 'Vacation' : 'Absence'),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setDialogState(() {
+                    selectedType = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: startDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (date != null) {
+                          setDialogState(() {
+                            startDate = date;
+                            if (endDate == null || endDate!.isBefore(startDate!)) {
+                              endDate = startDate;
+                            }
+                          });
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Start Date',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: Text(
+                          startDate != null
+                              ? '${startDate!.day}.${startDate!.month}.${startDate!.year}'
+                              : 'Select date',
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: endDate ?? startDate ?? DateTime.now(),
+                          firstDate: startDate ?? DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (date != null) {
+                          setDialogState(() {
+                            endDate = date;
+                          });
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'End Date',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: Text(
+                          endDate != null
+                              ? '${endDate!.day}.${endDate!.month}.${endDate!.year}'
+                              : 'Select date',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (startDate == null || endDate == null) return;
+                
+                final vacation = VacationAbsence(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  employeeId: widget.employee.id,
+                  startDate: startDate!,
+                  endDate: endDate!,
+                  type: selectedType,
+                );
+                
+                VacationManager.addVacation(vacation);
+                _loadVacations();
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
     );
+  }
 
-    widget.onSave(updatedEmployee);
-    Navigator.of(context).pop();
+  void _deleteVacation(VacationAbsence vacation) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Vacation'),
+        content: const Text('Delete this vacation?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              VacationManager.removeVacation(vacation.id);
+              _loadVacations();
+              Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.isNewEmployee ? 'Lisää työntekijä' : 'Muokkaa työntekijää'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Nimi',
-              border: OutlineInputBorder(),
+      title: Text('${widget.employee.name} - Vacations'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Vacations (${vacations.length})', 
+                     style: const TextStyle(fontWeight: FontWeight.bold)),
+                IconButton(
+                  onPressed: _addVacation,
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add Vacation',
+                ),
+              ],
             ),
-            autofocus: true,
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<EmployeeCategory>(
-            value: _selectedCategory,
-            decoration: const InputDecoration(
-              labelText: 'Kategoria',
-              border: OutlineInputBorder(),
+            const Divider(),
+            Expanded(
+              child: vacations.isEmpty
+                  ? const Center(child: Text('No vacations'))
+                  : ListView.builder(
+                      itemCount: vacations.length,
+                      itemBuilder: (context, index) {
+                        final vacation = vacations[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(vacation.getDisplayText()),
+                            subtitle: Text(
+                              '${vacation.startDate.day}.${vacation.startDate.month}.${vacation.startDate.year} - '
+                              '${vacation.endDate.day}.${vacation.endDate.month}.${vacation.endDate.year}',
+                            ),
+                            trailing: IconButton(
+                              onPressed: () => _deleteVacation(vacation),
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
-            items: EmployeeCategory.values.map((category) {
-              String categoryName;
-              switch (category) {
-                case EmployeeCategory.ab: categoryName = 'Vakituiset A/B'; break;
-                case EmployeeCategory.cd: categoryName = 'Vakituiset C/D'; break;
-                case EmployeeCategory.huolto: categoryName = 'Huolto'; break;
-                case EmployeeCategory.sijainen: categoryName = 'Sijaiset'; break;
-              }
-              return DropdownMenuItem(
-                value: category,
-                child: Text(categoryName),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _selectedCategory = value;
-                });
-              }
-            },
-          ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Peruuta'),
-        ),
-        ElevatedButton(
-          onPressed: _save,
-          child: const Text('Tallenna'),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
         ),
       ],
     );

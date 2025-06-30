@@ -1,5 +1,7 @@
 import 'package:calendar_app/data/default_employees.dart';
 import 'package:calendar_app/models/employee.dart';
+import 'package:calendar_app/models/vacation_absence.dart';
+import 'package:calendar_app/data/vacation_manager.dart';
 import 'package:calendar_app/views/employee_settings/employee_settings_view.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,6 +93,7 @@ class _WeekViewState extends State<WeekView> {
     _loadEmployees();
     _loadAssignments(); // LOAD GLOBAL ASSIGNMENTS
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
+    VacationManager.loadVacations(); // Load vacation data
   }
 
   Future<void> _loadEmployees() async {
@@ -200,6 +203,8 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleDropToLane(Employee employee, int dayIndex, String shiftTitle, int lane) {
+    // We'll check vacation days individually during assignment, not block entire week
+    
     // 🔥 CONVERT ABSOLUTE LANE TO PROFESSION + ROW (NO MORE MISALIGNMENT!)
     final professionInfo = _getAbsoluteLaneToProfession(lane, shiftTitle);
     if (professionInfo == null) return; // Invalid lane
@@ -231,10 +236,19 @@ class _WeekViewState extends State<WeekView> {
     // Pre-compute what assignments to add (outside setState)
     final newAssignments = <String, Employee>{};
     
+    // Get week dates for vacation checking
+    final weekDates = _getDatesForWeek(widget.weekNumber);
+    
     if (isProfessionRowCompletelyEmpty) {
-      // PROFESSION ROW IS EMPTY - FILL ENTIRE WEEK
+      // PROFESSION ROW IS EMPTY - FILL ENTIRE WEEK (except vacation days)
       for (int day = 0; day < 7; day++) {
         final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+        
+        // Check if employee is on vacation for this specific day
+        final dayDate = weekDates[day];
+        if (VacationManager.isEmployeeOnVacation(employee.id, dayDate)) {
+          continue; // Skip this day - employee is on vacation
+        }
         
         // Fast check using pre-computed set - check if employee has assignment on this day
         final hasExistingAssignment = employeeKeys.any((k) {
@@ -247,11 +261,17 @@ class _WeekViewState extends State<WeekView> {
         }
       }
     } else {
-      // PROFESSION ROW HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS
+      // PROFESSION ROW HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS (except vacation days)
       for (int day = 0; day < 7; day++) {
         final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
         
         if (!_assignments.containsKey(key)) {
+          // Check if employee is on vacation for this specific day
+          final dayDate = weekDates[day];
+          if (VacationManager.isEmployeeOnVacation(employee.id, dayDate)) {
+            continue; // Skip this day - employee is on vacation
+          }
+          
           // Fast check using pre-computed set - check if employee has assignment on this day
           final hasExistingAssignment = employeeKeys.any((k) {
             final parsed = _parseAssignmentKey(k);
@@ -265,12 +285,37 @@ class _WeekViewState extends State<WeekView> {
       }
     }
     
+    // Check if some days were skipped due to vacation
+    final totalDaysInWeek = 7;
+    final assignedDays = newAssignments.length;
+    final skippedDueToVacation = totalDaysInWeek - assignedDays - employeeKeys.length;
+    
     // SINGLE setState call with all changes batched
     if (newAssignments.isNotEmpty) {
       setState(() {
         _assignments.addAll(newAssignments);
       });
       _saveAssignments(); // SAVE TO PERSISTENT STORAGE
+      
+      // Show notification if some days were skipped
+      if (skippedDueToVacation > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${employee.name} sijoitettu ${assignedDays} päivälle. ${skippedDueToVacation} päivää ohitettu loman/poissaolon vuoksi.'),
+            backgroundColor: const Color(0xFF9DB4C0),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else if (skippedDueToVacation > 0) {
+      // All days were skipped due to vacation
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${employee.name} on lomalla/poissaolossa koko viikon - ei voida sijoittaa'),
+          backgroundColor: const Color(0xFF5C6B73),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -1292,9 +1337,7 @@ class _WeekViewState extends State<WeekView> {
     try {
       fullscreen.toggleFullscreen();
       HapticFeedback.lightImpact();
-      // NO MORE ANNOYING NOTIFICATIONS! 🎉
     } catch (e) {
-      // Silent fail - no notifications needed
       print('Fullscreen not supported on this platform');
     }
   }
@@ -1469,15 +1512,63 @@ class _WeekViewState extends State<WeekView> {
                                child: Stack(
                                  children: [
                                    Center(
-                                     child: Text(
-                                       employee.name,
-                                       style: const TextStyle(
-                                         fontSize: 10,
-                                         color: Color(0xFF253237), // Gunmetal text
-                                         fontWeight: FontWeight.w600,
+                                     child: Padding(
+                                       padding: const EdgeInsets.symmetric(horizontal: 2),
+                                       child: Row(
+                                         mainAxisAlignment: MainAxisAlignment.center,
+                                         children: [
+                                           Flexible(
+                                             child: Text(
+                                               employee.name,
+                                               style: const TextStyle(
+                                                 fontSize: 10,
+                                                 color: Color(0xFF253237), // Gunmetal text
+                                                 fontWeight: FontWeight.w600,
+                                               ),
+                                               textAlign: TextAlign.center,
+                                               overflow: TextOverflow.ellipsis,
+                                             ),
+                                           ),
+                                           // Show vacation status inline
+                                           () {
+                                             // Get dates for the DISPLAYED week (not current week)
+                                             final weekDates = _getDatesForWeek(widget.weekNumber);
+                                             final weekStart = weekDates.first;
+                                             final weekEnd = weekDates.last;
+                                             
+                                             final allVacations = VacationManager.getEmployeeVacations(employee.id);
+                                             final currentVacations = allVacations.where((vacation) {
+                                               final vacationStart = DateTime(vacation.startDate.year, vacation.startDate.month, vacation.startDate.day);
+                                               final vacationEnd = DateTime(vacation.endDate.year, vacation.endDate.month, vacation.endDate.day, 23, 59, 59);
+                                               final weekStartDay = DateTime(weekStart.year, weekStart.month, weekStart.day);
+                                               final weekEndDay = DateTime(weekEnd.year, weekEnd.month, weekEnd.day, 23, 59, 59);
+                                               
+                                               return !vacationStart.isAfter(weekEndDay) && !vacationEnd.isBefore(weekStartDay);
+                                             }).toList();
+                                             
+                                             if (currentVacations.isNotEmpty) {
+                                               return Row(
+                                                 mainAxisSize: MainAxisSize.min,
+                                                 children: [
+                                                   const SizedBox(width: 4),
+                                                   Flexible(
+                                                     child: Text(
+                                                       currentVacations.first.getDisplayText(),
+                                                       style: const TextStyle(
+                                                         fontSize: 7,
+                                                         color: Color(0xFF5C6B73), // Payne's gray
+                                                         fontStyle: FontStyle.italic,
+                                                       ),
+                                                       overflow: TextOverflow.ellipsis,
+                                                     ),
+                                                   ),
+                                                 ],
+                                               );
+                                             }
+                                             return const SizedBox.shrink();
+                                           }(),
+                                         ],
                                        ),
-                                       textAlign: TextAlign.center,
-                                       overflow: TextOverflow.ellipsis,
                                      ),
                                    ),
                                    // Show allocation count
@@ -1552,8 +1643,10 @@ class _WeekViewState extends State<WeekView> {
         }
         
         return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: allGroupWidgets,
           ),
         );
@@ -2189,7 +2282,7 @@ class _WeekViewState extends State<WeekView> {
       child: AnimatedScale(
         duration: const Duration(milliseconds: 150),
         scale: isInResizeMode ? 1.05 : 1.0,
-                    child: Center(
+        child: Center(
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 200),
             style: TextStyle(
@@ -2197,12 +2290,12 @@ class _WeekViewState extends State<WeekView> {
               color: _getTextColorForCategory(employee.category),
               fontWeight: isInResizeMode ? FontWeight.bold : FontWeight.w600,
             ),
-                      child: Text(
-                        employee.name,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+            child: Text(
+              employee.name,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ),
       ),
     );
@@ -2516,17 +2609,26 @@ class _WeekViewState extends State<WeekView> {
                 ),
               ),
 
-              // Worker list - takes remaining space - FIXED: No top margin to remove gap
+              // Worker list - takes remaining space with strict overflow control
               if (_showWorkerSection) Expanded(
                 child: Container(
-                  margin: const EdgeInsets.fromLTRB(2, 0, 2, 2), // FIXED: No top margin to remove gap
+                  margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No bottom margin to prevent overflow
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
+                    border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2), // Reduced from 4
-                    child: _buildFullWidthEmployeeGrid(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SizedBox(
+                        height: constraints.maxHeight - 4, // Reserve 4px for internal padding
+                        child: ClipRect(
+                          child: Padding(
+                            padding: const EdgeInsets.all(2),
+                            child: _buildFullWidthEmployeeGrid(),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

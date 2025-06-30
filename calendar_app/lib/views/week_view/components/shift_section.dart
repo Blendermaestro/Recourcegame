@@ -113,6 +113,7 @@ class _ShiftSectionState extends State<ShiftSection> {
       case EmployeeRole.tarvike: return Colors.pink[400]!;
       case EmployeeRole.pora: return Colors.amber[400]!;
       case EmployeeRole.huolto: return Colors.lime[400]!;
+      case EmployeeRole.custom: return Colors.grey[400]!;
     }
   }
 

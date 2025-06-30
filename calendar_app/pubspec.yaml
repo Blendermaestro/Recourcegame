@@ -40,11 +40,7 @@ dependencies:
   # Additional dependencies for web and auth
   crypto: ^3.0.3
   
-  # PDF generation functionality
-  pdf: ^3.10.4
-  printing: ^5.11.0
-  path_provider: ^2.1.1
-  permission_handler: ^11.3.1
+  # No PDF functionality - removed
 
 dev_dependencies:
   flutter_test:
