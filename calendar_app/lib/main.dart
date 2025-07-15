@@ -4,6 +4,8 @@ import 'package:calendar_app/views/year_view/year_view.dart';
 import 'package:calendar_app/views/auth/auth_view.dart';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:calendar_app/services/supabase_config.dart';
+import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/models/user_tier.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
@@ -85,17 +87,59 @@ class MainNavigationView extends StatefulWidget {
 class _MainNavigationViewState extends State<MainNavigationView> {
   String _currentView = 'VIIKKO';
   int _currentWeek = 1;
+  UserTier _userTier = UserTier.tier1;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _currentWeek = widget.initialWeek;
+    _loadUserTier();
+  }
+
+  Future<void> _loadUserTier() async {
+    try {
+      final tier = await AuthService.getCurrentUserTier();
+      setState(() {
+        _userTier = tier;
+        _isLoading = false;
+        
+        // If user is Tier 2, force them to year view
+        if (tier == UserTier.tier2) {
+          _currentView = 'VUOSI';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _userTier = UserTier.tier1; // Default to tier 1 on error
+      });
+    }
   }
 
   void _handleViewChange(String newView) {
+    // Prevent Tier 2 users from accessing week view
+    if (_userTier == UserTier.tier2 && newView == 'VIIKKO') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access denied: Tier 2 users can only access the yearly view'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     setState(() {
       _currentView = newView;
     });
+    
+    // 🔥 FORCE YEAR VIEW REFRESH - Ensure it shows current data when switching to it
+    if (newView == 'VUOSI') {
+      // Trigger a refresh after the view has been built
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        SharedAssignmentData.forceRefresh();
+      });
+    }
   }
 
   void _handleWeekChange(int newWeek) {
@@ -106,13 +150,46 @@ class _MainNavigationViewState extends State<MainNavigationView> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading screen while checking user tier
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF253237),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 16),
+              Text(
+                'Loading user permissions...',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Show view based on current selection and user tier
     switch (_currentView) {
       case 'VIIKKO':
-        return WeekView(
-          weekNumber: _currentWeek,
-          onWeekChanged: _handleWeekChange,
-          onViewChanged: _handleViewChange,
-        );
+        if (_userTier.canAccessWeekView) {
+          return WeekView(
+            weekNumber: _currentWeek,
+            onWeekChanged: _handleWeekChange,
+            onViewChanged: _handleViewChange,
+          );
+        } else {
+          // Fallback to year view for restricted users
+          return YearView(
+            initialWeek: _currentWeek,
+            onWeekChanged: _handleWeekChange,
+            onViewChanged: _handleViewChange,
+          );
+        }
       case 'VUOSI':
         return YearView(
           initialWeek: _currentWeek,
@@ -120,11 +197,19 @@ class _MainNavigationViewState extends State<MainNavigationView> {
           onViewChanged: _handleViewChange,
         );
       default:
-        return WeekView(
-          weekNumber: _currentWeek,
-          onWeekChanged: _handleWeekChange,
-          onViewChanged: _handleViewChange,
-        );
+        if (_userTier.canAccessWeekView) {
+          return WeekView(
+            weekNumber: _currentWeek,
+            onWeekChanged: _handleWeekChange,
+            onViewChanged: _handleViewChange,
+          );
+        } else {
+          return YearView(
+            initialWeek: _currentWeek,
+            onWeekChanged: _handleWeekChange,
+            onViewChanged: _handleViewChange,
+          );
+        }
     }
   }
 }

@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:calendar_app/services/supabase_config.dart';
+import 'package:calendar_app/services/user_tier_service.dart';
+import 'package:calendar_app/models/user_tier.dart';
 
 class AuthService {
   static SupabaseClient get _client => SupabaseConfig.client;
@@ -18,10 +20,26 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    return await _client.auth.signUp(
+    final response = await _client.auth.signUp(
       email: email,
       password: password,
     );
+    
+    // Create user profile with default tier based on email
+    if (response.user != null) {
+      final defaultTier = UserTierService.getDefaultTierForEmail(email);
+      try {
+        await UserTierService.createUserProfile(
+          response.user!.id,
+          email,
+          tier: defaultTier,
+        );
+      } catch (e) {
+        print('Warning: Could not create user profile: $e');
+      }
+    }
+    
+    return response;
   }
 
   // Sign in with email and password
@@ -58,5 +76,31 @@ class AuthService {
       'email': user.email,
       'created_at': user.createdAt,
     };
+  }
+
+  // Get current user tier
+  static Future<UserTier> getCurrentUserTier() async {
+    return await UserTierService.getCurrentUserTier();
+  }
+
+  // Check if current user has access to specific features
+  static Future<bool> canAccessWeekView() async {
+    final tier = await getCurrentUserTier();
+    return tier.canAccessWeekView;
+  }
+
+  static Future<bool> canAccessEmployeeSettings() async {
+    final tier = await getCurrentUserTier();
+    return tier.canAccessEmployeeSettings;
+  }
+
+  static Future<bool> canEditData() async {
+    final tier = await getCurrentUserTier();
+    return tier.canEditData;
+  }
+
+  static Future<bool> canAccessYearView() async {
+    final tier = await getCurrentUserTier();
+    return tier.canAccessYearView;
   }
 } 

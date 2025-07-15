@@ -39,6 +39,7 @@ dependencies:
   
   # Additional dependencies for web and auth
   crypto: ^3.0.3
+  uuid: ^4.0.0
   
   # No PDF functionality - removed
 

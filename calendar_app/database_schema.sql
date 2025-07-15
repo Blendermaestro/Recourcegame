@@ -145,5 +145,42 @@ CREATE TRIGGER update_week_settings_updated_at
     BEFORE UPDATE ON public.week_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Create user profiles table for tier management
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    email TEXT NOT NULL,
+    tier TEXT NOT NULL DEFAULT 'tier1' CHECK (tier IN ('tier1', 'tier2')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable Row Level Security for user_profiles
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Row Level Security Policies for user_profiles
+DROP POLICY IF EXISTS "Users can view all profiles" ON public.user_profiles;
+CREATE POLICY "Users can view all profiles" 
+ON public.user_profiles FOR SELECT 
+USING (true);
+
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.user_profiles;
+CREATE POLICY "Users can insert their own profile" 
+ON public.user_profiles FOR INSERT 
+WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.user_profiles;
+CREATE POLICY "Users can update their own profile" 
+ON public.user_profiles FOR UPDATE 
+USING (auth.uid() = id);
+
+-- Create index for user_profiles
+CREATE INDEX IF NOT EXISTS idx_user_profiles_tier ON public.user_profiles(tier);
+
+-- Create trigger for user_profiles updated_at
+DROP TRIGGER IF EXISTS update_user_profiles_updated_at ON public.user_profiles;
+CREATE TRIGGER update_user_profiles_updated_at
+    BEFORE UPDATE ON public.user_profiles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Insert default week settings for professions
 -- This will be handled by the app when a user first logs in 

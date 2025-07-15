@@ -6,8 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/shared_data_service.dart';
+import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/models/user_tier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+// Platform-specific fullscreen imports
+import 'fullscreen_stub.dart'
+if (dart.library.html) 'fullscreen_web.dart'
+if (dart.library.io) 'fullscreen_mobile.dart' as fullscreen;
 
 class YearView extends StatefulWidget {
   final int initialWeek;
@@ -28,75 +36,100 @@ class YearView extends StatefulWidget {
 class _YearViewState extends State<YearView> {
   late PageController _pageController;
   int _currentWeek = 1;
-  final Map<String, Employee> _assignments = {};
+  UserTier _userTier = UserTier.tier1;
   
-  // Static maps for profession settings (shared with WeekView)
-  static final Map<int, Map<EmployeeRole, bool>> _weekDayShiftProfessions = {};
-  static final Map<int, Map<EmployeeRole, bool>> _weekNightShiftProfessions = {};
-  static final Map<int, Map<EmployeeRole, int>> _weekDayShiftRows = {};
-  static final Map<int, Map<EmployeeRole, int>> _weekNightShiftRows = {};
+  // 🔥 SHARED DATA - Use truly shared data class
+  Map<String, Employee> get _assignments => SharedAssignmentData.assignments;
+  Map<int, Map<EmployeeRole, bool>> get _weekDayShiftProfessions => SharedAssignmentData.weekDayShiftProfessions;
+  Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
+  Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
+  Map<int, Map<EmployeeRole, int>> get _weekNightShiftRows => SharedAssignmentData.weekNightShiftRows;
 
   @override
   void initState() {
     super.initState();
     _currentWeek = widget.initialWeek > 0 ? widget.initialWeek : _getCurrentWeek(); // Start from current week if no initial week specified
     _pageController = PageController(initialPage: _currentWeek - 1);
+    
+    // Listen for assignment data changes
+    SharedAssignmentData.addListener(_onAssignmentDataChanged);
+    
+    _loadUserTier(); // Load user tier for permissions
     _loadCustomProfessions(); // Load custom professions first
     _loadEmployees();
-    _loadAssignments();
+    // Note: YearView is read-only, assignments loaded via SharedAssignmentData listener
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
   }
   
   @override
   void dispose() {
+    SharedAssignmentData.removeListener(_onAssignmentDataChanged);
     _pageController.dispose();
     super.dispose();
   }
+  
+  void _onAssignmentDataChanged() {
+    if (mounted) {
+      // Force immediate UI refresh when assignment data changes
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+      print('Year View - Refreshed due to assignment data change: ${SharedAssignmentData.assignmentCount} assignments');
+    }
+  }
+
+  Future<void> _loadUserTier() async {
+    try {
+      final tier = await AuthService.getCurrentUserTier();
+      if (mounted) {
+        setState(() {
+          _userTier = tier;
+        });
+      }
+    } catch (e) {
+      print('Error loading user tier: $e');
+    }
+  }
 
   Future<void> _loadEmployees() async {
-    final prefs = await SharedPreferences.getInstance();
-    final employeesJson = prefs.getString('employees');
-    
-    if (employeesJson != null) {
-      final List<dynamic> employeesList = json.decode(employeesJson);
-      final loadedEmployees = employeesList.map((e) => Employee.fromJson(e)).toList();
+    try {
+      // Clear old SharedPreferences data (migration from old system)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('employees');
       
+      // Load from Supabase database
+      final loadedEmployees = await SharedDataService.loadEmployees();
+      
+      // Update global list
       defaultEmployees.clear();
       defaultEmployees.addAll(loadedEmployees);
       
       if (mounted) {
         setState(() {});
       }
-    }
-  }
-
-  Future<void> _loadAssignments() async {
-    // Load all assignments from shared preferences
-    final prefs = await SharedPreferences.getInstance();
-    final assignmentsJson = prefs.getString('assignments');
-    
-    print('Year View - Loading assignments...');
-    
-    if (assignmentsJson != null) {
-      final Map<String, dynamic> assignmentsMap = json.decode(assignmentsJson);
-      _assignments.clear();
-      
-      for (final entry in assignmentsMap.entries) {
-        final employeeData = entry.value as Map<String, dynamic>;
-        _assignments[entry.key] = Employee.fromJson(employeeData);
-      }
-      
-      print('Year View - Loaded ${_assignments.length} assignments:');
-      for (final key in _assignments.keys) {
-        print('  $key -> ${_assignments[key]?.name}');
-      }
-      
+    } catch (e) {
+      print('Year View - Error loading employees: $e');
+      // Fallback to empty list if database fails
+      defaultEmployees.clear();
       if (mounted) {
         setState(() {});
       }
-    } else {
-      print('Year View - No assignments found in SharedPreferences');
+    }
+  }
+
+  // 🔥 YEAR VIEW IS READ-ONLY - Just display what's already loaded by WeekView
+  void _loadAssignments() async {
+    // Clear old SharedPreferences data (migration) - one time only
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('assignments');
+    
+    // 🔥 FORCE IMMEDIATE REFRESH - Ensure we show current assignments
+    if (mounted) {
+      setState(() {});
+      print('Year View - Read-only mode: Displaying ${SharedAssignmentData.assignmentCount} assignments already loaded by WeekView');
     }
   }
 
@@ -519,9 +552,9 @@ class _YearViewState extends State<YearView> {
                                       color: Colors.white, // White background for year view
                                       border: Border.all(color: Colors.grey[400]!, width: 1), // Thicker borders for better alignment reference
                                     ),
-                                  ),
-                                ),
-                              ),
+                      ),
+                    ),
+                  ),
                             ),
                           ),
                         ),
@@ -766,6 +799,15 @@ class _YearViewState extends State<YearView> {
     return currentWeek.clamp(1, 52);
   }
 
+  // Fullscreen toggle functionality
+  void _toggleFullscreen() {
+    try {
+      fullscreen.toggleFullscreen();
+    } catch (e) {
+      print('Fullscreen not supported on this platform');
+    }
+  }
+
 
 
   
@@ -781,7 +823,7 @@ class _YearViewState extends State<YearView> {
             Container(
               height: 40, // Reduced from 60 to match week view compactness
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Reduced padding
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
                 color: const Color(0xFF253237),
                 border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
               ),
@@ -795,9 +837,9 @@ class _YearViewState extends State<YearView> {
                   ),
                   const SizedBox(width: 8), // Reduced spacing
                   Expanded(
-                    child: Text(
+                      child: Text(
                       '2025 - VIIKKO $_currentWeek', // New format
-                      style: const TextStyle(
+                        style: const TextStyle(
                         fontSize: 14, // Reduced from 18
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -826,21 +868,51 @@ class _YearViewState extends State<YearView> {
                   ),
 
                   const SizedBox(width: 8), // Reduced spacing
-                  TextButton(
-                    onPressed: () => widget.onViewChanged?.call('VIIKKO'),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Compact padding
-                      minimumSize: Size.zero,
-                    ),
-                    child: const Text(
-                      'EDIT',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12, // Smaller text
-                        fontWeight: FontWeight.bold,
+                  
+                  // Fullscreen button
+                  IconButton(
+                    onPressed: _toggleFullscreen,
+                    icon: const Icon(Icons.fullscreen, size: 16, color: Colors.white),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Fullscreen',
+                  ),
+                  
+                  // Only show EDIT button for Tier 1 users
+                  if (_userTier.canAccessWeekView) ...[
+                    const SizedBox(width: 8), // Reduced spacing
+                    TextButton(
+                      onPressed: () => widget.onViewChanged?.call('VIIKKO'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Compact padding
+                        minimumSize: Size.zero,
+                      ),
+                      child: const Text(
+                        'EDIT',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12, // Smaller text
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
+                  ] else ...[
+                    const SizedBox(width: 8), // Reduced spacing
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'VIEW ONLY',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -851,11 +923,13 @@ class _YearViewState extends State<YearView> {
                 child: PageView.builder(
                   controller: _pageController,
                   onPageChanged: (index) {
+                    final newWeek = index + 1;
                     setState(() {
-                      _currentWeek = index + 1;
+                      _currentWeek = newWeek;
                     });
                     widget.onWeekChanged?.call(_currentWeek);
                     HapticFeedback.lightImpact();
+
                   },
                   itemCount: 52,
                   itemBuilder: (context, index) {

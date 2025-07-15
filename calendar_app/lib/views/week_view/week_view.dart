@@ -8,6 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:calendar_app/services/auth_service.dart';
+import 'package:calendar_app/services/shared_data_service.dart';
+import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'fullscreen_stub.dart' 
@@ -42,12 +45,13 @@ class WeekView extends StatefulWidget {
 }
 
 class _WeekViewState extends State<WeekView> {
-  final Map<String, Employee> _assignments = {};
+  // 🔥 SHARED ASSIGNMENT DATA - Use truly shared data class
+  Map<String, Employee> get _assignments => SharedAssignmentData.assignments;
   
-  static final Map<int, Map<EmployeeRole, bool>> _weekDayShiftProfessions = {};
-  static final Map<int, Map<EmployeeRole, bool>> _weekNightShiftProfessions = {};
-  static final Map<int, Map<EmployeeRole, int>> _weekDayShiftRows = {};
-  static final Map<int, Map<EmployeeRole, int>> _weekNightShiftRows = {};
+  Map<int, Map<EmployeeRole, bool>> get _weekDayShiftProfessions => SharedAssignmentData.weekDayShiftProfessions;
+  Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
+  Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
+  Map<int, Map<EmployeeRole, int>> get _weekNightShiftRows => SharedAssignmentData.weekNightShiftRows;
   
   // Collapsible employee groups
   final Map<EmployeeCategory, bool> _collapsedGroups = {
@@ -63,14 +67,16 @@ class _WeekViewState extends State<WeekView> {
   // Tab state - 0 for day shift, 1 for night shift
   int _currentTabIndex = 0;
   
-  // Resize mode - tracks which employee is in resize mode
-  String? _resizeModeBlockKey; // Format: "employeeId-lane"
-  
-  // Visual drag state for smooth resizing
+  // 🔥 FIXED RESIZE SYSTEM - No more key mismatches or blocking saves
+  String? _resizeModeBlockKey; // Format: "employeeId-shiftTitle-profession-professionRow"
   Map<String, DragState>? _dragStates;
+  Map<String, dynamic>? _dragOriginalAssignment;
   
-
-
+  // 🔥 DEBOUNCED CLOUD SAVING - No more blocking UI
+  Timer? _saveDebounceTimer;
+  bool _hasPendingChanges = false;
+  bool _isDragActive = false; // Protect drag states during saves
+  
   @override
   void initState() {
     super.initState();
@@ -89,25 +95,52 @@ class _WeekViewState extends State<WeekView> {
       _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
     }
     
+    _clearOldDataOnFirstRun(); // Clear old data during migration
     _loadCustomProfessions(); // Load custom professions first
     _loadEmployees();
-    _loadAssignments(); // LOAD GLOBAL ASSIGNMENTS
+    _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
   }
 
+  // Clear old data during migration to new Supabase system
+  Future<void> _clearOldDataOnFirstRun() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasCleared = prefs.getBool('migration_cleared') ?? false;
+      
+      if (!hasCleared) {
+        // Clear all old data
+        await prefs.remove('employees');
+        await prefs.remove('assignments');
+        await prefs.setBool('migration_cleared', true);
+        print('WeekView: Cleared old data during migration to Supabase system');
+      }
+    } catch (e) {
+      print('WeekView: Error during data migration: $e');
+    }
+  }
+
   Future<void> _loadEmployees() async {
-    final prefs = await SharedPreferences.getInstance();
-    final employeesJson = prefs.getString('employees');
-    
-    if (employeesJson != null) {
-      final List<dynamic> employeesList = json.decode(employeesJson);
-      final loadedEmployees = employeesList.map((e) => Employee.fromJson(e)).toList();
+    try {
+      // Clear old SharedPreferences data (migration from old system)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('employees');
+      
+      // Load from Supabase database
+      final loadedEmployees = await SharedDataService.loadEmployees();
       
       // Update global list
       defaultEmployees.clear();
       defaultEmployees.addAll(loadedEmployees);
       
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error loading employees: $e');
+      // Fallback to empty list if database fails
+      defaultEmployees.clear();
       if (mounted) {
         setState(() {});
       }
@@ -203,129 +236,139 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleDropToLane(Employee employee, int dayIndex, String shiftTitle, int lane) {
-    // We'll check vacation days individually during assignment, not block entire week
-    
     // 🔥 CONVERT ABSOLUTE LANE TO PROFESSION + ROW (NO MORE MISALIGNMENT!)
     final professionInfo = _getAbsoluteLaneToProfession(lane, shiftTitle);
     if (professionInfo == null) return; // Invalid lane
     
     final profession = professionInfo['profession'] as EmployeeRole;
     final professionRow = professionInfo['row'] as int;
-    
-    // Pre-compute profession row emptiness check (faster than inside setState)
-    bool isProfessionRowCompletelyEmpty = true;
-    for (int day = 0; day < 7; day++) {
-      final checkKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-      if (_assignments.containsKey(checkKey)) {
-        isProfessionRowCompletelyEmpty = false;
-        break;
-      }
-    }
-    
-    // Pre-compute existing assignments for this employee (cache lookup)
-    final employeeKeys = <String>{};
-    for (final entry in _assignments.entries) {
-      final parsed = _parseAssignmentKey(entry.key);
-      if (parsed != null && 
-          parsed['weekNumber'] == widget.weekNumber && 
-          entry.value.id == employee.id) {
-        employeeKeys.add(entry.key);
-      }
-    }
-    
-    // Pre-compute what assignments to add (outside setState)
-    final newAssignments = <String, Employee>{};
     
     // Get week dates for vacation checking
     final weekDates = _getDatesForWeek(widget.weekNumber);
     
-    if (isProfessionRowCompletelyEmpty) {
-      // PROFESSION ROW IS EMPTY - FILL ENTIRE WEEK (except vacation days)
-      for (int day = 0; day < 7; day++) {
-        final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-        
-        // Check if employee is on vacation for this specific day
-        final dayDate = weekDates[day];
-        if (VacationManager.isEmployeeOnVacation(employee.id, dayDate)) {
-          continue; // Skip this day - employee is on vacation
-        }
-        
-        // Fast check using pre-computed set - check if employee has assignment on this day
-        final hasExistingAssignment = employeeKeys.any((k) {
-          final parsed = _parseAssignmentKey(k);
-          return parsed != null && parsed['day'] == day;
-        });
-        
-        if (!hasExistingAssignment) {
-          newAssignments[key] = employee;
-        }
-      }
-    } else {
-      // PROFESSION ROW HAS SOME ASSIGNMENTS - FILL ONLY EMPTY SLOTS (except vacation days)
-      for (int day = 0; day < 7; day++) {
-        final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-        
-        if (!_assignments.containsKey(key)) {
-          // Check if employee is on vacation for this specific day
-          final dayDate = weekDates[day];
-          if (VacationManager.isEmployeeOnVacation(employee.id, dayDate)) {
-            continue; // Skip this day - employee is on vacation
-          }
-          
-          // Fast check using pre-computed set - check if employee has assignment on this day
-          final hasExistingAssignment = employeeKeys.any((k) {
-            final parsed = _parseAssignmentKey(k);
-            return parsed != null && parsed['day'] == day;
-          });
-          
-          if (!hasExistingAssignment) {
-            newAssignments[key] = employee;
-          }
-        }
+    // 🔥 SMART ALLOCATION - Find which days this employee is already allocated to (ANY row)
+    final employeeAllocatedDays = <int>{};
+    for (final entry in _assignments.entries) {
+      final parsed = _parseAssignmentKey(entry.key);
+      if (parsed != null &&
+          parsed['weekNumber'] == widget.weekNumber &&
+          parsed['shiftTitle'] == shiftTitle &&
+          entry.value.id == employee.id) {
+        employeeAllocatedDays.add(parsed['day'] as int);
       }
     }
     
-    // Check if some days were skipped due to vacation
-    final totalDaysInWeek = 7;
-    final assignedDays = newAssignments.length;
-    final skippedDueToVacation = totalDaysInWeek - assignedDays - employeeKeys.length;
+    // 🔥 GET EXISTING ASSIGNMENTS FOR THIS SPECIFIC ROW (for smart fill-up)
+    final existingRowKeys = _assignments.keys.where((key) {
+      final parsed = _parseAssignmentKey(key);
+      return parsed != null &&
+             parsed['weekNumber'] == widget.weekNumber &&
+             parsed['shiftTitle'] == shiftTitle &&
+             parsed['profession'] == profession &&
+             parsed['professionRow'] == professionRow &&
+             _assignments[key]?.id == employee.id;
+    }).toList();
     
-    // SINGLE setState call with all changes batched
-    if (newAssignments.isNotEmpty) {
-      setState(() {
-        _assignments.addAll(newAssignments);
-      });
-      _saveAssignments(); // SAVE TO PERSISTENT STORAGE
-      
-      // Show notification if some days were skipped
-      if (skippedDueToVacation > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${employee.name} sijoitettu ${assignedDays} päivälle. ${skippedDueToVacation} päivää ohitettu loman/poissaolon vuoksi.'),
-            backgroundColor: const Color(0xFF9DB4C0),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+    final existingRowDays = existingRowKeys.map((key) {
+      final parsed = _parseAssignmentKey(key);
+      return parsed!['day'] as int;
+    }).toSet();
+    
+    // Determine which days to allocate
+    final daysToAllocate = <int>[];
+    
+    for (int day = 0; day < 7; day++) {
+      // Check if this specific slot is already occupied by ANOTHER employee
+      final slotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+      if (_assignments.containsKey(slotKey) && _assignments[slotKey]?.id != employee.id) {
+        continue; // Skip - occupied by someone else
       }
-    } else if (skippedDueToVacation > 0) {
-      // All days were skipped due to vacation
+      
+      // Check if employee is on vacation this day
+      final dayDate = weekDates[day];
+      if (VacationManager.isEmployeeOnVacation(employee.id, dayDate)) {
+        continue; // Skip - employee on vacation
+      }
+      
+             // 🔥 SMART LOGIC: 
+       // - If this row already has assignments, just fill missing days (FILL UP mode)
+       // - If different row, avoid days already allocated elsewhere
+       if (existingRowDays.isNotEmpty) {
+         // FILL UP mode: only add days missing from THIS row
+         if (!existingRowDays.contains(day)) {
+           daysToAllocate.add(day);
+         }
+       } else {
+         // NEW ROW mode: avoid days allocated to employee in ANY row
+         if (!employeeAllocatedDays.contains(day)) {
+           daysToAllocate.add(day);
+         }
+       }
+    }
+    
+    if (daysToAllocate.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${employee.name} on lomalla/poissaolossa koko viikon - ei voida sijoittaa'),
+          content: Text('${employee.name} on jo sijoitettu kaikkiin mahdollisiin päiviin tälle viikolle'),
           backgroundColor: const Color(0xFF5C6B73),
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 3),
         ),
       );
+      return;
     }
+    
+    setState(() {
+      // 🔥 SMART ASSIGNMENT LOGIC
+      if (existingRowDays.isEmpty) {
+        // NEW ROW: Remove any existing assignments for this row first (shouldn't be any)
+        for (final key in existingRowKeys) {
+          _assignments.remove(key);
+        }
+      }
+      // FILL UP mode: Keep existing assignments, just add missing days
+      
+      // Add assignments for all days we need to allocate
+      for (final day in daysToAllocate) {
+        final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+        _assignments[key] = employee;
+        print('WeekView: Added assignment $key -> ${employee.name}');
+      }
+    });
+    
+    // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+    print('WeekView: Drag ended - scheduling save for ${daysToAllocate.length} assignments');
+    _scheduleCloudSave();
+    _dragOriginalAssignment = null;
+    
+    // Success message with smart feedback
+    String allocatedDaysText;
+    if (existingRowDays.isNotEmpty) {
+      // FILL UP mode
+      if (daysToAllocate.length == 0) {
+        allocatedDaysText = 'täytetty (oli jo täysi)';
+      } else {
+        allocatedDaysText = 'täytetty +${daysToAllocate.length} päivää';
+      }
+    } else {
+      // NEW ROW mode
+      allocatedDaysText = daysToAllocate.length == 7 
+          ? 'koko riville' 
+          : '${daysToAllocate.length} päivään (muut jo varattu)';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('✓ ${employee.name} sijoitettu $allocatedDaysText. Pitkä painallus = muokkaa kokoa.'),
+        backgroundColor: const Color(0xFF9DB4C0),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
-  void _handleResize(Employee employee, String shiftTitle, int startDay, int duration, int lane) {
-    // 🔥 CONVERT ABSOLUTE LANE TO PROFESSION + ROW (NO MORE MISALIGNMENT!)
-    final professionInfo = _getAbsoluteLaneToProfession(lane, shiftTitle);
-    if (professionInfo == null) return; // Invalid lane
-    
-    final profession = professionInfo['profession'] as EmployeeRole;
-    final professionRow = professionInfo['row'] as int;
+  void _handleResize(Employee employee, String shiftTitle, int startDay, int duration, EmployeeRole profession, int professionRow) {
+    try {
+      // 🔥 PROFESSION INFO ALREADY PROVIDED - No conversion needed!
+      int removedCount = 0;
     
     setState(() {
       // SMART RESIZE WITH CONFLICT RESOLUTION
@@ -344,24 +387,20 @@ class _WeekViewState extends State<WeekView> {
           .toList();
       
       // Remove the original block being resized
+      removedCount = originalKeys.length;
+      print('WeekView: Removing $removedCount original assignments during resize for ${employee.name}');
       for (final key in originalKeys) {
+        print('WeekView: Removing original assignment: $key');
         _assignments.remove(key);
       }
       
-      // SECOND: For resizing, remove overlapping assignments from other blocks 
+      // SECOND: Check for conflicts with OTHER employees in the target slots (respect multi-row behavior)
       for (int day = startDay; day < startDay + duration && day < 7; day++) {
-        final conflictingKeys = _assignments.keys
-            .where((key) {
-              final parsed = _parseAssignmentKey(key);
-              return parsed != null &&
-                     parsed['weekNumber'] == widget.weekNumber &&
-                     parsed['day'] == day &&
-                     _assignments[key]?.id == employee.id;
-            })
-            .toList();
+        final targetSlotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
         
-        for (final key in conflictingKeys) {
-          _assignments.remove(key);
+        // Only remove if the slot is occupied by ANOTHER employee (preserve multi-row for same employee)
+        if (_assignments.containsKey(targetSlotKey) && _assignments[targetSlotKey]?.id != employee.id) {
+          _assignments.remove(targetSlotKey);
         }
       }
       
@@ -369,16 +408,30 @@ class _WeekViewState extends State<WeekView> {
       for (int day = startDay; day < startDay + duration && day < 7; day++) {
         final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
         _assignments[key] = employee;
+        print('WeekView: Resize added assignment $key -> ${employee.name}');
       }
     });
-    _saveAssignments(); // SAVE TO PERSISTENT STORAGE
+    
+    // 🔥 INSTANT UI + FORCE SAVE FOR RESIZE OPERATIONS
+    print('WeekView: Resize ended - forcing immediate save for $duration day assignment ($removedCount removed)');
+    _hasPendingChanges = true;
+    
+    // Cancel any pending saves and force immediate save for resize operations
+    _saveDebounceTimer?.cancel();
+    _forceSave();
+    } catch (e) {
+      print('❌ Error during resize operation: $e');
+      // Don't break the UI on resize errors
+    }
   }
 
   void _handleRemove(Employee employee, String shiftTitle) {
     setState(() {
       _removeEmployeeFromShift(employee, shiftTitle);
     });
-    _saveAssignments(); // SAVE TO PERSISTENT STORAGE
+    
+    // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+    _scheduleCloudSave();
   }
 
   void _removeEmployeeFromShift(Employee employee, String shiftTitle) {
@@ -423,7 +476,9 @@ class _WeekViewState extends State<WeekView> {
           _assignments.remove(key);
         }
       });
-      _saveAssignments(); // SAVE TO PERSISTENT STORAGE
+      
+      // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+      _scheduleCloudSave();
     }
   }
 
@@ -503,8 +558,88 @@ class _WeekViewState extends State<WeekView> {
   }
   
   /// Generate new profession-based assignment key
+  // 🔥 UNIFIED KEY GENERATION - No more mismatches!
   String _generateAssignmentKey(int weekNumber, String shiftTitle, int day, EmployeeRole profession, int professionRow) {
     return '$weekNumber-$shiftTitle-$day-${profession.name}-$professionRow';
+  }
+  
+  String _generateBlockKey(Employee employee, String shiftTitle, EmployeeRole profession, int professionRow) {
+    return '${employee.id}|$shiftTitle|${profession.name}|$professionRow';
+  }
+  
+  // 🔥 THROTTLED CLOUD SAVING - Prevent excessive database operations
+  bool _isSaving = false;
+  DateTime? _lastSaveTime;
+  
+    void _scheduleCloudSave() {
+    // Reduce throttle to 1 second and add debug logging
+    final now = DateTime.now();
+    if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(seconds: 1)) {
+      print('WeekView: Save throttled - too recent (${now.difference(_lastSaveTime!).inMilliseconds}ms ago)');
+      _hasPendingChanges = true; // Still mark as pending for retry
+      return;
+    }
+
+    _hasPendingChanges = true;
+    print('WeekView: Scheduling cloud save in 800ms...');
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 800), () {
+      if (_hasPendingChanges && !_isDragActive && !_isSaving) {
+        print('WeekView: Executing scheduled cloud save...');
+        _performCloudSave();
+      } else {
+        print('WeekView: Skipping save - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
+      }
+    });
+  }
+  
+    Future<void> _performCloudSave({bool force = false}) async {
+    if (!force && (!_hasPendingChanges || _isDragActive || _isSaving)) {
+      print('WeekView: Skipping cloud save - force:$force, hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
+      return;
+    }
+    
+    _isSaving = true;
+    _hasPendingChanges = false;
+    _lastSaveTime = DateTime.now();
+    print('WeekView: Starting cloud save operation...');
+
+    try {
+      await _saveAssignments();
+      print('✅ Cloud save successful');
+    } catch (e) {
+      print('❌ Cloud save failed: $e');
+      _hasPendingChanges = true; // Retry later
+      // Don't reload assignments during active drag operations
+      if (!_isDragActive) {
+        _showCloudSaveError();
+      }
+    } finally {
+      _isSaving = false;
+    }
+  }
+  
+  /// Force save bypassing throttling (for critical operations)
+  Future<void> _forceSave() async {
+    print('WeekView: Forcing immediate save...');
+    _saveDebounceTimer?.cancel();
+    await _performCloudSave(force: true);
+  }
+  
+  void _showCloudSaveError() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('⚠️ Yhteysvirhe - muutokset tallennetaan pian'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Yritä nyt',
+            onPressed: () => _performCloudSave(),
+          ),
+        ),
+      );
+    }
   }
   
   /// Parse profession-based assignment key
@@ -530,49 +665,203 @@ class _WeekViewState extends State<WeekView> {
     } catch (e) {
       return null; // Invalid values
     }
+    }
+  
+  /// Remove duplicate employee assignments for the current week (smart deduplication)
+  void _deduplicateAssignments() {
+    final duplicateSlots = <String, List<String>>{}; // slot identifier -> list of keys
+    
+    // Find all assignments for current week and group by exact slot
+    for (final entry in _assignments.entries) {
+      final parsed = _parseAssignmentKey(entry.key);
+      if (parsed != null && parsed['weekNumber'] == widget.weekNumber) {
+        // Create slot identifier: shiftTitle-day-profession-professionRow
+        final slotId = '${parsed['shiftTitle']}-${parsed['day']}-${parsed['profession']}-${parsed['professionRow']}';
+        duplicateSlots.putIfAbsent(slotId, () => []).add(entry.key);
+      }
+    }
+    
+    // Remove duplicates - keep only first assignment per slot
+    int duplicatesRemoved = 0;
+    for (final entry in duplicateSlots.entries) {
+      if (entry.value.length > 1) {
+        // Sort by key to ensure consistent behavior, then keep first
+        entry.value.sort();
+        for (int i = 1; i < entry.value.length; i++) {
+          _assignments.remove(entry.value[i]);
+          duplicatesRemoved++;
+        }
+      }
+    }
+    
+    if (duplicatesRemoved > 0) {
+      print('WeekView: Removed $duplicatesRemoved duplicate assignments for week ${widget.weekNumber} (same slot duplicates only)');
+    }
   }
-
-  // GLOBAL ASSIGNMENT SAVING/LOADING - NOT USER SPECIFIC!
+  
+  // 🔥 PROTECTED CLOUD SAVING - Safe during drag operations
   Future<void> _saveAssignments() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final assignmentsMap = <String, Map<String, dynamic>>{};
+      // 🔥 DEDUPLICATE ASSIGNMENTS - Remove duplicate employees
+      _deduplicateAssignments();
+      
+      // Collect all assignments to save for this week
+      final assignmentsToSave = <Map<String, dynamic>>[];
+      final assignmentKeys = <String>{}; // Track constraint keys to avoid duplicates
+      final existingAssignmentKeys = <String>{}; // Track keys in original format for deletion comparison
       
       for (final entry in _assignments.entries) {
-        assignmentsMap[entry.key] = entry.value.toJson();
+        final parsed = _parseAssignmentKey(entry.key);
+        if (parsed != null && parsed['weekNumber'] == widget.weekNumber) {
+          final lane = _getProfessionToAbsoluteLane(parsed['profession'], parsed['professionRow'], parsed['shiftTitle']);
+          if (lane != -1) { // Valid lane
+            final shiftType = parsed['shiftTitle'].toLowerCase().contains('yö') ? 'night' : 'day';
+            final userId = SharedDataService.supabase.auth.currentUser?.id;
+            
+            // Create a constraint key to avoid duplicates (matches DB constraint)
+            final constraintKey = '$userId-${parsed['weekNumber']}-${parsed['day']}-$shiftType-$lane';
+            
+
+            
+            // Only add if we haven't already processed this constraint combination
+            if (!assignmentKeys.contains(constraintKey)) {
+              assignmentsToSave.add({
+                'week_number': parsed['weekNumber'],
+                'day_index': parsed['day'],
+                'shift_title': parsed['shiftTitle'],
+                'lane': lane,
+                'employee_id': entry.value.id,
+                'shift_type': shiftType,
+                'user_id': userId,
+              });
+              
+              assignmentKeys.add(constraintKey);
+              
+              // Also track in original format for deletion comparison
+              final originalKey = '${parsed['weekNumber']}-${parsed['day']}-${parsed['shiftTitle']}-$lane';
+              existingAssignmentKeys.add(originalKey);
+            }
+          }
+        }
       }
       
-      final assignmentsJson = json.encode(assignmentsMap);
-      await prefs.setString('assignments', assignmentsJson);
-      print('WeekView: Saved ${_assignments.length} assignments to SharedPreferences');
+      // Get existing assignments for this week to see what needs to be deleted
+      final existingAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
+      
+      final assignmentsToDelete = <Map<String, dynamic>>[];
+      
+      for (final existingKey in existingAssignments.keys) {
+        if (!existingAssignmentKeys.contains(existingKey)) {
+          // This assignment exists in DB but not in our current assignments - should be deleted
+          // Parse new key format: weekNumber-shiftTitle-day-profession-professionRow
+          final parsed = _parseAssignmentKey(existingKey);
+          if (parsed != null) {
+            final lane = _getProfessionToAbsoluteLane(parsed['profession'], parsed['professionRow'], parsed['shiftTitle']);
+            if (lane != -1) {
+              assignmentsToDelete.add({
+                'week_number': parsed['weekNumber'],
+                'day_index': parsed['day'],
+                'shift_title': parsed['shiftTitle'],
+                'lane': lane,
+              });
+            }
+          }
+        }
+      }
+      
+      // ATOMIC OPERATIONS: Use batch upsert for saves and batch delete for removals
+      if (assignmentsToSave.isNotEmpty) {
+
+        
+        // Save assignments one by one with conflict resolution
+        for (final assignment in assignmentsToSave) {
+          try {
+            await SharedDataService.supabase.from('work_assignments').upsert(
+              [assignment],
+              onConflict: 'user_id,week_number,day_index,shift_type,lane',
+              ignoreDuplicates: false
+            );
+          } catch (e) {
+            // If upsert fails due to constraint, delete conflicting record first
+            
+            await SharedDataService.supabase.from('work_assignments')
+              .delete()
+              .eq('user_id', assignment['user_id'])
+              .eq('week_number', assignment['week_number'])
+              .eq('day_index', assignment['day_index'])
+              .eq('shift_type', assignment['shift_type'])
+              .eq('lane', assignment['lane']);
+            
+            // Now insert the new assignment
+            await SharedDataService.supabase.from('work_assignments').insert([assignment]);
+          }
+        }
+      }
+      
+      // Delete assignments that are no longer needed
+      for (final deleteData in assignmentsToDelete) {
+        await SharedDataService.deleteAssignment(
+          weekNumber: deleteData['week_number'],
+          dayIndex: deleteData['day_index'],
+          shiftTitle: deleteData['shift_title'],
+          lane: deleteData['lane'],
+        );
+      }
+      
+      // Clear old SharedPreferences data (migration)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('assignments');
+      
+      print('WeekView: ✅ Successfully saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length} assignments to Supabase database');
     } catch (e) {
       print('WeekView: Error saving assignments: $e');
+      rethrow; // Let calling code handle the error appropriately
     }
   }
 
-  Future<void> _loadAssignments() async {
+  Future<void> _loadAssignments({bool forceReload = false}) async {
+    // 🔥 PROTECT DRAG STATES - Don't reload during active drag operations
+    if (_isDragActive) {
+      print('WeekView: Skipping assignment reload during active drag');
+      return;
+    }
+    
+    // 🔥 CHECK IF ASSIGNMENTS ALREADY EXIST - Prevent unnecessary database reloads
+    final existingCount = SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber);
+    if (!forceReload && existingCount > 0) {
+      print('WeekView: Found ${existingCount} existing assignments for week ${widget.weekNumber}, skipping database reload');
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    
     try {
+      // Clear old SharedPreferences data (migration)
       final prefs = await SharedPreferences.getInstance();
-      final assignmentsJson = prefs.getString('assignments');
+      await prefs.remove('assignments');
       
-      if (assignmentsJson != null) {
-        final Map<String, dynamic> assignmentsMap = json.decode(assignmentsJson);
-        _assignments.clear();
-        
-        for (final entry in assignmentsMap.entries) {
-          final employeeData = entry.value as Map<String, dynamic>;
-          _assignments[entry.key] = Employee.fromJson(employeeData);
-        }
-        
-        print('WeekView: Loaded ${_assignments.length} assignments from SharedPreferences');
-        if (mounted) {
-          setState(() {});
-        }
-      } else {
-        print('WeekView: No assignments found in SharedPreferences');
+      print('WeekView: Loading assignments from database for week ${widget.weekNumber}${forceReload ? " (forced)" : ""}...');
+      
+      // Load assignments from Supabase database for current week ONLY
+      final supabaseAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
+      
+      // Update assignments for current week (clears old + adds new + notifies)
+      SharedAssignmentData.updateAssignmentsForWeek(widget.weekNumber, supabaseAssignments);
+      
+      print('WeekView: Loaded ${SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber)} assignments for week ${widget.weekNumber} (Total: ${SharedAssignmentData.assignmentCount})');
+      if (mounted && !_isDragActive) {
+        setState(() {});
       }
     } catch (e) {
       print('WeekView: Error loading assignments: $e');
+      // Only clear current week assignments if not in drag mode
+      if (!_isDragActive) {
+        SharedAssignmentData.clearWeek(widget.weekNumber);
+        if (mounted) {
+          setState(() {});
+        }
+      }
     }
   }
 
@@ -608,65 +897,36 @@ class _WeekViewState extends State<WeekView> {
 
   Future<void> _loadProfessionSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Load profession settings
-      final dayProfessionsJson = prefs.getString('week_day_professions');
-      final nightProfessionsJson = prefs.getString('week_night_professions');
-      final dayRowsJson = prefs.getString('week_day_rows');
-      final nightRowsJson = prefs.getString('week_night_rows');
-      
-      if (dayProfessionsJson != null) {
-        final Map<String, dynamic> data = json.decode(dayProfessionsJson);
-        _weekDayShiftProfessions.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> profs = entry.value;
-          _weekDayShiftProfessions[week] = Map.fromEntries(
-            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
-          );
-        }
-      }
-      
-      if (nightProfessionsJson != null) {
-        final Map<String, dynamic> data = json.decode(nightProfessionsJson);
-        _weekNightShiftProfessions.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> profs = entry.value;
-          _weekNightShiftProfessions[week] = Map.fromEntries(
-            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
-          );
-        }
-      }
-      
-      if (dayRowsJson != null) {
-        final Map<String, dynamic> data = json.decode(dayRowsJson);
-        _weekDayShiftRows.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> rows = entry.value;
-          _weekDayShiftRows[week] = Map.fromEntries(
-            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
-          );
-        }
-      }
-      
-      if (nightRowsJson != null) {
-        final Map<String, dynamic> data = json.decode(nightRowsJson);
-        _weekNightShiftRows.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> rows = entry.value;
-          _weekNightShiftRows[week] = Map.fromEntries(
-            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
-          );
-        }
-      }
-      
-      print('WeekView: Loaded profession settings');
+      // 🔥 FALLBACK TO DEFAULTS - Database table doesn't exist, use consistent defaults
+      print('WeekView: Using consistent default profession settings');
+      _setDefaultProfessionSettings();
     } catch (e) {
       print('WeekView: Error loading profession settings: $e');
+      _setDefaultProfessionSettings();
+    }
+  }
+
+  /// Set default profession settings as fallback
+  void _setDefaultProfessionSettings() {
+    _dayShiftProfessions.clear();
+    _dayShiftRows.clear();
+    _nightShiftProfessions.clear();
+    _nightShiftRows.clear();
+    
+    for (final profession in EmployeeRole.values) {
+      _dayShiftProfessions[profession] = true;
+      _dayShiftRows[profession] = 1;
+      _nightShiftProfessions[profession] = true;
+      _nightShiftRows[profession] = 1;
+    }
+  }
+
+  /// Convert string to EmployeeRole (same as SharedDataService)
+  EmployeeRole? _stringToEmployeeRole(String value) {
+    try {
+      return EmployeeRole.values.firstWhere((e) => e.toString().split('.').last == value);
+    } catch (e) {
+      return null;
     }
   }
 
@@ -694,7 +954,7 @@ class _WeekViewState extends State<WeekView> {
             onPressed: () async {
               if (controller.text.trim().isNotEmpty) {
                 final newEmployee = Employee(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  id: const Uuid().v4(),
                   name: controller.text.trim(),
                   category: category,
                   type: EmployeeType.vakityontekija, // Default type
@@ -702,16 +962,27 @@ class _WeekViewState extends State<WeekView> {
                   shiftCycle: ShiftCycle.none, // Default shift cycle
                 );
                 
-                // Add to global list
-                defaultEmployees.add(newEmployee);
-                
-                // Save to storage
-                await _saveEmployees();
-                
-                // Refresh UI
-                setState(() {});
-                
-                Navigator.of(context).pop();
+                try {
+                  // Save to Supabase database
+                  await SharedDataService.saveEmployee(newEmployee);
+                  
+                  // Reload employees from database to refresh the list
+                  await _loadEmployees();
+                  
+                  Navigator.of(context).pop();
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Employee ${newEmployee.name} added successfully')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding employee: $e')),
+                    );
+                  }
+                }
               }
             },
             child: const Text('Lisää'),
@@ -737,9 +1008,9 @@ class _WeekViewState extends State<WeekView> {
 
 
   Future<void> _saveEmployees() async {
-    final prefs = await SharedPreferences.getInstance();
-    final employeesJson = json.encode(defaultEmployees.map((e) => e.toJson()).toList());
-    await prefs.setString('employees', employeesJson);
+    // This method is now deprecated - use SharedDataService.saveEmployee() for individual saves
+    // and _loadEmployees() to refresh the list from database
+    print('_saveEmployees() called - this is deprecated, use SharedDataService instead');
   }
 
   void _showProfessionEditDialog() {
@@ -751,8 +1022,8 @@ class _WeekViewState extends State<WeekView> {
             return AlertDialog(
               title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.black87)),
               content: Container(
-                width: 400,
-                height: 500,
+                  width: 400,
+                  height: 500,
                 child: DefaultTabController(
                   length: 2,
                   child: Column(
@@ -788,10 +1059,10 @@ class _WeekViewState extends State<WeekView> {
                       ),
                     ],
                   ),
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
+                actions: [
+                  TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Close', style: TextStyle(color: Colors.black87)),
                 ),
@@ -875,9 +1146,9 @@ class _WeekViewState extends State<WeekView> {
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
+                  ),
+                  TextButton(
+                    onPressed: () {
                     if (nameController.text.isNotEmpty && shortNameController.text.isNotEmpty) {
                       final customProf = CustomProfession(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -972,7 +1243,12 @@ class _WeekViewState extends State<WeekView> {
                   Expanded(
                     child: Text(
                       _getRoleDisplayName(role),
-                      style: const TextStyle(fontSize: 14, color: Colors.black87),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 14, // Smaller font for compact width
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                   // Row count controls
@@ -1000,7 +1276,11 @@ class _WeekViewState extends State<WeekView> {
                     alignment: Alignment.center,
                     child: Text(
                       '${rows[role]}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
                     ),
                   ),
                   // Increase button
@@ -1049,8 +1329,8 @@ class _WeekViewState extends State<WeekView> {
       _assignments.remove(key);
     }
     
-    // Save the updated assignments
-    _saveAssignments();
+    // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+    _scheduleCloudSave();
     
     // Update UI
     if (mounted) {
@@ -1078,19 +1358,32 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _toggleResizeMode(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
+    // Get employee's profession info for proper key generation
+    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    if (professionInfo == null) return;
+    
+    final profession = professionInfo['profession'] as EmployeeRole;
+    final professionRow = professionInfo['professionRow'] as int;
+    final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
+    
     setState(() {
       _resizeModeBlockKey = _resizeModeBlockKey == blockKey ? null : blockKey;
     });
   }
 
   void _handleResizeStart(DragStartDetails details, Employee employee, String shiftTitle, bool isLeftResize) {
-    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
-    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
-    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
-    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
+    try {
+      _isDragActive = true; // Protect from cloud saves during drag
+      
+      // 🔥 GET EMPLOYEE'S PROFESSION AND ROW FROM ASSIGNMENTS
+      final employeeProfessionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+      if (employeeProfessionInfo == null) return;
     
-    // Get current employee span for originalStartDay and originalDuration using profession-based parsing
+    final profession = employeeProfessionInfo['profession'] as EmployeeRole;
+    final professionRow = employeeProfessionInfo['professionRow'] as int;
+    final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
+    
+    // Get current employee span
     final currentKeys = _assignments.entries
         .where((entry) {
           final parsed = _parseAssignmentKey(entry.key);
@@ -1127,75 +1420,82 @@ class _WeekViewState extends State<WeekView> {
       );
     });
     
-    // Add haptic feedback for that "juicy" feel
     HapticFeedback.lightImpact();
+    } catch (e) {
+      print('❌ Error starting resize: $e');
+      _isDragActive = false;
+    }
   }
 
   void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
-    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
-    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
-    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
+    if (_resizeModeBlockKey == null || _dragStates == null) return;
     
-    // Update only the current position for smooth visual feedback
-    final currentDragState = _dragStates?[blockKey];
+    final currentDragState = _dragStates![_resizeModeBlockKey!];
     if (currentDragState != null) {
-      setState(() {
-        _dragStates![blockKey] = DragState(
-          startX: currentDragState.startX,
-          currentX: details.globalPosition.dx,
-          isLeftResize: true,
-          originalStartDay: currentDragState.originalStartDay,
-          originalDuration: currentDragState.originalDuration,
-        );
-      });
+      // 🔥 OPTIMIZED: Update only drag position, not full rebuild
+      _dragStates![_resizeModeBlockKey!] = DragState(
+        startX: currentDragState.startX,
+        currentX: details.globalPosition.dx,
+        isLeftResize: true,
+        originalStartDay: currentDragState.originalStartDay,
+        originalDuration: currentDragState.originalDuration,
+      );
+      setState(() {}); // Minimal state update
     }
   }
 
   void _handleRightResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
-    // 🔥 USE PROFESSION-BASED KEYS FOR RESIZE!
-    final employeeAbsoluteLane = _getEmployeeAbsoluteLane(employee, shiftTitle);
-    final employeeStartDay = _getEmployeeStartDay(employee, shiftTitle);
-    final blockKey = '${employee.id}-$shiftTitle-$employeeAbsoluteLane-$employeeStartDay';
+    if (_resizeModeBlockKey == null || _dragStates == null) return;
     
-    // Update only the current position for smooth visual feedback
-    final currentDragState = _dragStates?[blockKey];
+    final currentDragState = _dragStates![_resizeModeBlockKey!];
     if (currentDragState != null) {
-      setState(() {
-        _dragStates![blockKey] = DragState(
-          startX: currentDragState.startX,
-          currentX: details.globalPosition.dx,
-          isLeftResize: false,
-          originalStartDay: currentDragState.originalStartDay,
-          originalDuration: currentDragState.originalDuration,
-        );
-      });
+      // 🔥 OPTIMIZED: Update only drag position, not full rebuild
+      _dragStates![_resizeModeBlockKey!] = DragState(
+        startX: currentDragState.startX,
+        currentX: details.globalPosition.dx,
+        isLeftResize: false,
+        originalStartDay: currentDragState.originalStartDay,
+        originalDuration: currentDragState.originalDuration,
+      );
+      setState(() {}); // Minimal state update
     }
   }
 
 
 
   void _performResize(Employee employee, String shiftTitle, int targetDay, bool isLeftResize) {
-    // Find current employee assignments for this shift
-    final currentKeys = _assignments.entries
-        .where((entry) => entry.key.startsWith('${widget.weekNumber}-$shiftTitle') && entry.value.id == employee.id)
-        .map((e) => e.key)
+    // 🔥 FIXED: Find current employee assignments using NEW key format
+    final currentEntries = _assignments.entries
+        .where((entry) {
+          final parsed = _parseAssignmentKey(entry.key);
+          return parsed != null && 
+                 parsed['weekNumber'] == widget.weekNumber && 
+                 parsed['shiftTitle'] == shiftTitle && 
+                 entry.value.id == employee.id;
+        })
         .toList();
     
-    if (currentKeys.isEmpty) return;
+    if (currentEntries.isEmpty) {
+      print('WeekView: No assignments found for resize - employee: ${employee.name}, shift: $shiftTitle');
+      return;
+    }
     
-    // Sort to get the span
-    currentKeys.sort((a, b) {
-      final dayA = int.tryParse(a.split('-')[2]) ?? 0;
-      final dayB = int.tryParse(b.split('-')[2]) ?? 0;
-          return dayA.compareTo(dayB);
-        });
+    // Sort by day to get the span
+    currentEntries.sort((a, b) {
+      final dayA = _parseAssignmentKey(a.key)?['day'] ?? 0;
+      final dayB = _parseAssignmentKey(b.key)?['day'] ?? 0;
+      return dayA.compareTo(dayB);
+    });
         
-    final firstKey = currentKeys.first;
-    final lastKey = currentKeys.last;
-    final currentStartDay = int.tryParse(firstKey.split('-')[2]) ?? 0;
-    final currentEndDay = int.tryParse(lastKey.split('-')[2]) ?? 0;
-    final lane = int.tryParse(firstKey.split('-')[3]) ?? 0;
+    final firstEntry = currentEntries.first;
+    final lastEntry = currentEntries.last;
+    final firstParsed = _parseAssignmentKey(firstEntry.key)!;
+    final lastParsed = _parseAssignmentKey(lastEntry.key)!;
+    
+    final currentStartDay = firstParsed['day'] as int;
+    final currentEndDay = lastParsed['day'] as int;
+    final profession = firstParsed['profession'] as EmployeeRole;
+    final professionRow = firstParsed['professionRow'] as int;
     
     int newStartDay, newEndDay;
     
@@ -1212,12 +1512,15 @@ class _WeekViewState extends State<WeekView> {
     // Only update if there's an actual change
     if (newStartDay != currentStartDay || newEndDay != currentEndDay) {
       final newDuration = newEndDay - newStartDay + 1;
-      _handleResize(employee, shiftTitle, newStartDay, newDuration, lane);
+      print('WeekView: Resizing ${employee.name} from days $currentStartDay-$currentEndDay to $newStartDay-$newEndDay (duration: $newDuration)');
+      
+      // Use the NEW handleResize with correct profession info
+      _handleResize(employee, shiftTitle, newStartDay, newDuration, profession, professionRow);
     }
   }
 
-  // 🔥 NEW: Get employee's absolute lane using profession-based system
-  int _getEmployeeAbsoluteLane(Employee employee, String shiftTitle) {
+  // 🔥 GET EMPLOYEE'S PROFESSION INFO FROM ASSIGNMENTS - No more dependency loops!
+  Map<String, dynamic>? _getEmployeeProfessionInfo(Employee employee, String shiftTitle) {
     final entry = _assignments.entries
         .where((e) {
           final parsed = _parseAssignmentKey(e.key);
@@ -1228,59 +1531,37 @@ class _WeekViewState extends State<WeekView> {
         })
         .firstOrNull;
     
-    if (entry == null) return 0;
+    if (entry == null) return null;
     
     final parsed = _parseAssignmentKey(entry.key);
-    if (parsed == null) return 0;
+    if (parsed == null) return null;
     
-    final profession = parsed['profession'] as EmployeeRole;
-    final professionRow = parsed['professionRow'] as int;
-    
-    return _getProfessionToAbsoluteLane(profession, professionRow, shiftTitle);
-  }
-
-  int _getEmployeeStartDay(Employee employee, String shiftTitle) {
-    final entries = _assignments.entries
-        .where((e) {
-          final parsed = _parseAssignmentKey(e.key);
-          return parsed != null && 
-                 parsed['weekNumber'] == widget.weekNumber && 
-                 parsed['shiftTitle'] == shiftTitle && 
-                 e.value.id == employee.id;
-        })
-        .toList();
-    if (entries.isEmpty) return 0;
-    
-    entries.sort((a, b) {
-      final parsedA = _parseAssignmentKey(a.key);
-      final parsedB = _parseAssignmentKey(b.key);
-      final dayA = parsedA?['day'] ?? 0;
-      final dayB = parsedB?['day'] ?? 0;
-      return dayA.compareTo(dayB);
-    });
-    
-    final parsed = _parseAssignmentKey(entries.first.key);
-    return parsed?['day'] ?? 0;
+    return {
+      'profession': parsed['profession'] as EmployeeRole,
+      'professionRow': parsed['professionRow'] as int,
+    };
   }
 
 
 
   void _handleResizeEnd() {
-    if (_resizeModeBlockKey == null || _dragStates == null) return;
-    
-    final blockKey = _resizeModeBlockKey!;
-    final dragState = _dragStates![blockKey];
-    
-    if (dragState != null) {
-      // 🔥 USE SAME GRID SNAPPING AS WORKING DROP LOGIC!
-      final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7; // Match working calculation
-      final gridLeft = 40; // Profession column width
+    try {
+      if (_resizeModeBlockKey == null || _dragStates == null) return;
       
-      // Get employee and shift info from block key (format: employeeId-shiftTitle-lane-startDay)
-      final keyParts = blockKey.split('-');
+      final blockKey = _resizeModeBlockKey!;
+      final dragState = _dragStates![blockKey];
+      
+      if (dragState != null) {
+      // 🔥 GRID SNAPPING CALCULATION
+      final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7;
+      final gridLeft = 40;
+      
+      // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
+      final keyParts = blockKey.split('|');
       final employeeId = keyParts[0];
       final shiftTitle = keyParts[1];
-      final blockLane = int.tryParse(keyParts[2]) ?? 0;
+      final professionName = keyParts[2];
+      final professionRow = int.tryParse(keyParts[3]) ?? 0;
       
       // Find the employee
       final employee = _assignments.values.firstWhere((e) => e.id == employeeId, 
@@ -1288,43 +1569,74 @@ class _WeekViewState extends State<WeekView> {
       
       if (employee.id.isEmpty) return;
       
-      // 🔥 SIMPLE GRID SNAPPING - NO COMPLEX TOLERANCE BULLSHIT!
-      final relativeX = dragState.currentX - gridLeft;
-      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6); // Same as working drop logic!
+      // Get profession enum
+      EmployeeRole? profession;
+      try {
+        profession = EmployeeRole.values.byName(professionName);
+      } catch (e) {
+        print('Invalid profession: $professionName');
+        return;
+      }
       
+      final relativeX = dragState.currentX - gridLeft;
+      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
+      
+      // 🔥 FIXED: Proper if/else logic for left vs right resize
       if (dragState.isLeftResize) {
         // LEFT RESIZE - change start day, keep original end
         final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
         final newStartDay = targetDay.clamp(0, originalEnd);
         final newDuration = originalEnd - newStartDay + 1;
         
-        // Update only if start day actually changed
         if (newStartDay != dragState.originalStartDay && newDuration > 0) {
-          _handleResize(employee, shiftTitle, newStartDay, newDuration, blockLane);
+          _handleResize(employee, shiftTitle, newStartDay, newDuration, profession, professionRow);
         }
       } else {
         // RIGHT RESIZE - keep original start, change duration
         final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay);
         
-        // Update only if duration actually changed
         if (newDuration != dragState.originalDuration) {
-          _handleResize(employee, shiftTitle, dragState.originalStartDay, newDuration, blockLane);
+          _handleResize(employee, shiftTitle, dragState.originalStartDay, newDuration, profession, professionRow);
         }
       }
     }
     
-    // Add haptic feedback for completion
     HapticFeedback.mediumImpact();
     
-    // Clear drag and resize state with smooth transition
+    // Clear drag and resize state
     setState(() {
       _dragStates = null;
       _resizeModeBlockKey = null;
+      _isDragActive = false; // Allow cloud saves again
     });
+    
+    // Trigger any pending cloud save now that drag is complete
+    if (_hasPendingChanges) {
+      _performCloudSave();
+    }
+    } catch (e) {
+      print('❌ Error during resize: $e');
+      // Clear drag state on error
+      setState(() {
+        _dragStates = null;
+        _resizeModeBlockKey = null;
+        _isDragActive = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _saveDebounceTimer?.cancel();
+    
+    // Force save any pending changes before leaving
+    if (_hasPendingChanges && !_isDragActive) {
+      print('WeekView: Force saving pending changes on dispose...');
+      _forceSave().catchError((e) {
+        print('WeekView: Error in dispose force save: $e');
+      });
+    }
+    
     super.dispose();
   }
 
@@ -1478,7 +1790,7 @@ class _WeekViewState extends State<WeekView> {
                            flex: 3, // Takes 3/5 of the space (20% shorter)
                            child: Draggable<Employee>(
                              data: employee,
-                               feedback: Material(
+                             feedback: Material(
                                child: Container(
                                  width: 120,
                                  height: 24,
@@ -1518,15 +1830,15 @@ class _WeekViewState extends State<WeekView> {
                                          mainAxisAlignment: MainAxisAlignment.center,
                                          children: [
                                            Flexible(
-                                             child: Text(
-                                               employee.name,
-                                               style: const TextStyle(
-                                                 fontSize: 10,
+                                     child: Text(
+                                       employee.name,
+                                       style: const TextStyle(
+                                         fontSize: 10,
                                                  color: Color(0xFF253237), // Gunmetal text
-                                                 fontWeight: FontWeight.w600,
-                                               ),
-                                               textAlign: TextAlign.center,
-                                               overflow: TextOverflow.ellipsis,
+                                         fontWeight: FontWeight.w600,
+                                       ),
+                                       textAlign: TextAlign.center,
+                                       overflow: TextOverflow.ellipsis,
                                              ),
                                            ),
                                            // Show vacation status inline
@@ -1695,29 +2007,29 @@ class _WeekViewState extends State<WeekView> {
       key: ValueKey('unified-shift-${widget.weekNumber}-$_currentTabIndex'),
       child: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
+        color: Colors.white,
           border: Border.fromBorderSide(BorderSide(color: Color(0xFF9DB4C0), width: 1)),
         ),
-        child: Row(
+            child: Row(
           key: ValueKey('shift-row-$_currentTabIndex'),
-          children: [
-            // Profession labels for current shift
-            Container(
+              children: [
+                // Profession labels for current shift
+                Container(
               key: const ValueKey('profession-labels'),
               width: 32, // Compact width to save space
               color: const Color(0xFF9DB4C0), // Cadet gray from palette
-              child: Column(
-                children: _currentTabIndex == 0 
-                    ? _buildDayShiftProfessionLabels()
-                    : _buildNightShiftProfessionLabels(),
-              ),
+                  child: Column(
+                    children: _currentTabIndex == 0 
+                        ? _buildDayShiftProfessionLabels()
+                        : _buildNightShiftProfessionLabels(),
+                  ),
+                ),
+                // Calendar grid for current shift
+                Expanded(
+                  child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
+                ),
+              ],
             ),
-            // Calendar grid for current shift
-            Expanded(
-              child: _buildSingleShiftCalendarGrid(shiftTitles[_currentTabIndex]),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1838,12 +2150,14 @@ class _WeekViewState extends State<WeekView> {
                       onAcceptWithDetails: (details) {
                         _handleDropToLane(details.data, day, shiftTitle, row);
                       },
+                      hitTestBehavior: HitTestBehavior.opaque, // Ensure reliable hit detection
                       builder: (context, candidateData, rejectedData) {
                         return Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey[200]!, width: 0.5),
                             color: candidateData.isNotEmpty ? Colors.green.withOpacity(0.3) : null,
                           ),
+                          child: const SizedBox.expand(), // Ensure full hit area
                         );
                       },
                         ),
@@ -1863,73 +2177,94 @@ class _WeekViewState extends State<WeekView> {
 
   List<Widget> _buildShiftAssignmentBlocks(String shiftTitle, double dayWidth, double rowHeight) {
     List<Widget> blocks = [];
-    Set<String> processedAssignments = {};
+    Set<String> processedEmployees = {};
+    
+    // 🔥 FIXED: Group assignments by employee to create proper multi-day blocks
+    final employeeBlocks = <String, List<String>>{};
     
     for (final entry in _assignments.entries) {
-      if (!processedAssignments.contains(entry.key)) {
-        final parsed = _parseAssignmentKey(entry.key);
-        if (parsed != null && 
-            parsed['weekNumber'] == widget.weekNumber && 
-            parsed['shiftTitle'] == shiftTitle) {
-          
-          final startDay = parsed['day'] as int;
-          final profession = parsed['profession'] as EmployeeRole;
-          final professionRow = parsed['professionRow'] as int;
-          
-          // 🔥 CONVERT PROFESSION + ROW TO ABSOLUTE LANE FOR RENDERING
-          final absoluteLane = _getProfessionToAbsoluteLane(profession, professionRow, shiftTitle);
-          if (absoluteLane == -1) continue; // Profession not visible or invalid row
-          
-          // Check if this block is being dragged
-          final blockKey = '${entry.value.id}-$shiftTitle-$absoluteLane-$startDay';
-          final dragState = _dragStates?[blockKey];
-          
-          // Find contiguous assignment duration using profession-based keys
-          int duration = 1;
-          for (int day = startDay + 1; day < 7; day++) {
-            final nextKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-            if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
-              duration++;
-              processedAssignments.add(nextKey);
-            } else {
-              break;
-            }
-          }
-          
-          // Calculate visual position during drag
-          double visualLeft = startDay * dayWidth;
-          double visualWidth = (dayWidth * duration) - 1;
-          
-          if (dragState != null && _resizeModeBlockKey == blockKey) {
-            final deltaX = dragState.currentX - dragState.startX;
-            
-            if (dragState.isLeftResize) {
-              // Left resize - adjust start position and width
-              visualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
-              final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
-              visualWidth = (originalEnd * dayWidth + dayWidth) - visualLeft - 1;
-            } else {
-              // Right resize - adjust width only
-              visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - visualLeft - 1;
-            }
-            
-            // Clamp to grid boundaries
-            visualLeft = visualLeft.clamp(0, 6 * dayWidth);
-            visualWidth = visualWidth.clamp(dayWidth * 0.2, (7 * dayWidth) - visualLeft);
-          }
-          
-          blocks.add(
-            Positioned(
-              left: visualLeft,
-              top: absoluteLane * rowHeight,
-              width: visualWidth,
-              height: rowHeight - 1,
-              child: _buildAssignmentBlock(entry.value, shiftTitle, startDay, absoluteLane),
-            ),
-          );
-          processedAssignments.add(entry.key);
-        }
+      final parsed = _parseAssignmentKey(entry.key);
+      if (parsed != null && 
+          parsed['weekNumber'] == widget.weekNumber && 
+          parsed['shiftTitle'] == shiftTitle) {
+        
+        final profession = parsed['profession'] as EmployeeRole;
+        final professionRow = parsed['professionRow'] as int;
+        final employeeKey = '${entry.value.id}|${profession.name}|$professionRow';
+        
+        employeeBlocks.putIfAbsent(employeeKey, () => []);
+        employeeBlocks[employeeKey]!.add(entry.key);
       }
+    }
+    
+    // Render each employee's continuous blocks
+    for (final entry in employeeBlocks.entries) {
+      final employeeKey = entry.key;
+      final assignmentKeys = entry.value;
+      
+      if (processedEmployees.contains(employeeKey)) continue;
+      processedEmployees.add(employeeKey);
+      
+      // Get employee and profession info
+      final keyParts = employeeKey.split('|');
+      final employeeId = keyParts[0];
+      final professionName = keyParts[1];
+      final professionRow = int.parse(keyParts[2]);
+      
+      final employee = _assignments.values.firstWhere((e) => e.id == employeeId);
+      final profession = EmployeeRole.values.byName(professionName);
+      
+      // Convert to absolute lane
+      final absoluteLane = _getProfessionToAbsoluteLane(profession, professionRow, shiftTitle);
+      if (absoluteLane == -1) continue;
+      
+      // Get all days for this employee block
+      final days = assignmentKeys
+          .map((key) => _parseAssignmentKey(key)?['day'] as int?)
+          .where((day) => day != null)
+          .cast<int>()
+          .toList()..sort();
+      
+      if (days.isEmpty) continue;
+      
+      // Create block key for drag state
+      final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
+      final dragState = _dragStates?[blockKey];
+      
+      // Calculate block span
+      final startDay = days.first;
+      final endDay = days.last;
+      final duration = endDay - startDay + 1;
+      
+      // Calculate visual position
+      double visualLeft = startDay * dayWidth;
+      double visualWidth = duration * dayWidth - 1;
+      
+      // Apply drag state for visual feedback
+      if (dragState != null && _resizeModeBlockKey == blockKey) {
+        final deltaX = dragState.currentX - dragState.startX;
+        
+        if (dragState.isLeftResize) {
+          visualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
+          final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
+          visualWidth = (originalEnd * dayWidth + dayWidth) - visualLeft - 1;
+        } else {
+          visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - visualLeft - 1;
+        }
+        
+        visualLeft = visualLeft.clamp(0, 6 * dayWidth);
+        visualWidth = visualWidth.clamp(dayWidth * 0.2, (7 * dayWidth) - visualLeft);
+      }
+      
+      blocks.add(
+        Positioned(
+          left: visualLeft,
+          top: absoluteLane * rowHeight,
+          width: visualWidth,
+          height: rowHeight - 1,
+          child: _buildAssignmentBlock(employee, shiftTitle, startDay, absoluteLane),
+        ),
+      );
     }
     
     return blocks;
@@ -2059,21 +2394,12 @@ class _WeekViewState extends State<WeekView> {
           final blockKey = '${entry.value.id}-${shiftTitles[0]}-$absoluteLane-$startDay';
           final dragState = _dragStates?[blockKey];
           
-          // Find contiguous assignment duration using profession-based keys
-          int duration = 1;
-          for (int day = startDay + 1; day < 7; day++) {
-            final nextKey = _generateAssignmentKey(widget.weekNumber, shiftTitles[0], day, profession, professionRow);
-            if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
-              duration++;
-              processedAssignments.add(nextKey);
-            } else {
-              break;
-            }
-          }
+          // SINGLE-DAY CELL RENDERING (no block combining)
+          int duration = 1; // Always render as single day
           
-          // Calculate visual position during drag
+          // Calculate visual position - single cell only
           double visualLeft = startDay * dayWidth;
-          double visualWidth = (dayWidth * duration) - 1;
+          double visualWidth = dayWidth - 1; // Single cell width
           
           if (dragState != null && _resizeModeBlockKey == blockKey) {
             final deltaX = dragState.currentX - dragState.startX;
@@ -2107,7 +2433,7 @@ class _WeekViewState extends State<WeekView> {
       }
     }
     
-    // Add night shift blocks (offset by day shift rows + header)  
+    // Add night shift blocks (offset by day shift rows + header)
     for (final entry in _assignments.entries) {
       if (!processedAssignments.contains(entry.key)) {
         final parsed = _parseAssignmentKey(entry.key);
@@ -2127,21 +2453,12 @@ class _WeekViewState extends State<WeekView> {
           final blockKey = '${entry.value.id}-${shiftTitles[1]}-$absoluteLane-$startDay';
           final dragState = _dragStates?[blockKey];
           
-          // Find contiguous assignment duration using profession-based keys
-          int duration = 1;
-          for (int day = startDay + 1; day < 7; day++) {
-            final nextKey = _generateAssignmentKey(widget.weekNumber, shiftTitles[1], day, profession, professionRow);
-            if (_assignments.containsKey(nextKey) && _assignments[nextKey]?.id == entry.value.id) {
-              duration++;
-              processedAssignments.add(nextKey);
-            } else {
-              break;
-            }
-          }
+          // SINGLE-DAY CELL RENDERING (no block combining)
+          int duration = 1; // Always render as single day
           
-          // Calculate visual position during drag
+          // Calculate visual position - single cell only
           double visualLeft = startDay * dayWidth;
-          double visualWidth = (dayWidth * duration) - 1;
+          double visualWidth = dayWidth - 1; // Single cell width
           
           if (dragState != null && _resizeModeBlockKey == blockKey) {
             final deltaX = dragState.currentX - dragState.startX;
@@ -2179,16 +2496,25 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildAssignmentBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
+    // 🔥 CONSISTENT KEY GENERATION - Use profession-based key for resize mode
+    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    if (professionInfo == null) {
+      // Fallback if profession info not found
+      return Container();
+    }
+    
+    final profession = professionInfo['profession'] as EmployeeRole;
+    final professionRow = professionInfo['professionRow'] as int;
+    final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     final isInResizeMode = _resizeModeBlockKey == blockKey;
     
     return RepaintBoundary(
       key: ValueKey(blockKey),
-      child: GestureDetector(
+                          child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onLongPress: () {
           // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
-          _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+                              _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
           HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
         },
         child: isInResizeMode 
@@ -2202,7 +2528,51 @@ class _WeekViewState extends State<WeekView> {
     return Draggable<Employee>(
                     data: employee,
                     onDragStarted: () {
+                      // Store original assignment for potential restoration
+                      _dragOriginalAssignment = {
+                        'employee': employee,
+                        'shiftTitle': shiftTitle,
+                        'blockStartDay': blockStartDay,
+                        'blockLane': blockLane,
+                      };
                       _removeSpecificBlock(employee, shiftTitle, blockStartDay, blockLane);
+                    },
+                    onDragEnd: (details) {
+                      // If drag ended without successful drop, restore the original assignment
+                      if (!details.wasAccepted && _dragOriginalAssignment != null) {
+                        final original = _dragOriginalAssignment!;
+                        final originalEmployee = original['employee'] as Employee;
+                        final originalShift = original['shiftTitle'] as String;
+                        final originalDay = original['blockStartDay'] as int;
+                        final originalLane = original['blockLane'] as int;
+                        
+                        // Restore original assignment
+                        final professionInfo = _getAbsoluteLaneToProfession(originalLane, originalShift);
+                        if (professionInfo != null) {
+                          final profession = professionInfo['profession'] as EmployeeRole;
+                          final professionRow = professionInfo['row'] as int;
+                          final key = _generateAssignmentKey(widget.weekNumber, originalShift, originalDay, profession, professionRow);
+                          
+                          setState(() {
+                            _assignments[key] = originalEmployee;
+                          });
+                          
+                          // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+                          _scheduleCloudSave();
+                          
+                          // Show feedback for restored assignment
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('↶ ${originalEmployee.name} palautettu alkuperäiseen paikkaan'),
+                                backgroundColor: const Color(0xFF5C6B73),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                      _dragOriginalAssignment = null;
                     },
                     feedback: Material(
                       child: Container(
@@ -2228,7 +2598,7 @@ class _WeekViewState extends State<WeekView> {
                     ),
                     childWhenDragging: Container(
                       decoration: BoxDecoration(
-                        color: Colors.grey[400],
+                        color: Colors.grey[400]?.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(4),
                       ),
       ),
@@ -2282,7 +2652,7 @@ class _WeekViewState extends State<WeekView> {
       child: AnimatedScale(
         duration: const Duration(milliseconds: 150),
         scale: isInResizeMode ? 1.05 : 1.0,
-        child: Center(
+                    child: Center(
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 200),
             style: TextStyle(
@@ -2290,12 +2660,12 @@ class _WeekViewState extends State<WeekView> {
               color: _getTextColorForCategory(employee.category),
               fontWeight: isInResizeMode ? FontWeight.bold : FontWeight.w600,
             ),
-            child: Text(
-              employee.name,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+                      child: Text(
+                        employee.name,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
         ),
       ),
     );
@@ -2311,21 +2681,23 @@ class _WeekViewState extends State<WeekView> {
         .toList();
     
     if (allKeys.isNotEmpty) {
+      // 🔥 FIXED: Sort using NEW key format parsing
       allKeys.sort((a, b) {
-        final dayA = int.tryParse(a.split('-')[2]) ?? 0; // Week-shift-day-lane format
-        final dayB = int.tryParse(b.split('-')[2]) ?? 0;
+        final dayA = _parseAssignmentKey(a)?['day'] ?? 0;
+        final dayB = _parseAssignmentKey(b)?['day'] ?? 0;
         return dayA.compareTo(dayB);
       });
       
       final firstKey = allKeys.first;
       final lastKey = allKeys.last;
-      final firstKeyParts = firstKey.split('-');
-      final lastKeyParts = lastKey.split('-');
+      final firstParsed = _parseAssignmentKey(firstKey);
+      final lastParsed = _parseAssignmentKey(lastKey);
       
-      if (firstKeyParts.length >= 4) { // Week-shift-day-lane format
-        final startDay = int.tryParse(firstKeyParts[2]) ?? 0; // Day is index 2
-        final endDay = int.tryParse(lastKeyParts[2]) ?? 0;
-        final lane = int.tryParse(firstKeyParts[3]) ?? 0; // Lane is index 3
+      if (firstParsed != null && lastParsed != null) {
+        final startDay = firstParsed['day'] as int;
+        final endDay = lastParsed['day'] as int;
+        final profession = firstParsed['profession'] as EmployeeRole;
+        final professionRow = firstParsed['professionRow'] as int;
         
         // Get current position
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
@@ -2347,13 +2719,13 @@ class _WeekViewState extends State<WeekView> {
             final newStartDay = targetDay.clamp(0, endDay);
             final newDuration = endDay - newStartDay + 1;
             if (newStartDay != startDay) {
-              _handleResize(employee, shiftTitle, newStartDay, newDuration, lane);
+              _handleResize(employee, shiftTitle, newStartDay, newDuration, profession, professionRow);
             }
           } else if (distanceToRight < 20) {
             // Resize from right (change duration)
             final newDuration = (targetDay - startDay + 1).clamp(1, 7 - startDay);
             if (newDuration != (endDay - startDay + 1)) {
-              _handleResize(employee, shiftTitle, startDay, newDuration, lane);
+              _handleResize(employee, shiftTitle, startDay, newDuration, profession, professionRow);
             }
           }
         }
@@ -2400,13 +2772,13 @@ class _WeekViewState extends State<WeekView> {
       child: Scaffold(
         backgroundColor: const Color(0xFFE0FBFC), // Light cyan background
         body: SafeArea(
-          child: Column(
-            children: [
+        child: Column(
+          children: [
               // Combined week navigation + tabs bar
-              Container(
+          Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.all(2), // Reduced from 4
-                decoration: BoxDecoration(
+            decoration: BoxDecoration(
                   color: const Color(0xFF253237), // Gunmetal
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                 ),
@@ -2441,7 +2813,7 @@ class _WeekViewState extends State<WeekView> {
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+              color: Colors.white,
                           ),
                         ),
                       ),
@@ -2467,10 +2839,20 @@ class _WeekViewState extends State<WeekView> {
                         tooltip: 'Fullscreen',
                       ),
                     ),
+                    // Refresh button
+                    SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        onPressed: () => _loadAssignments(forceReload: true),
+                        icon: const Icon(Icons.refresh, size: 14, color: Colors.white),
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Refresh data',
+                      ),
+                    ),
                     // Day/Night shift tabs
                     Expanded(
-                      child: Row(
-                        children: [
+            child: Row(
+              children: [
                           // Day shift tab
                           Expanded(
                             child: GestureDetector(
@@ -2554,7 +2936,7 @@ class _WeekViewState extends State<WeekView> {
               ),
               
               // Compact day header
-              Container(
+                Container(
                 height: 32, // Reduced from 40
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // Reduced margins
                 decoration: BoxDecoration(
@@ -2565,56 +2947,56 @@ class _WeekViewState extends State<WeekView> {
                   children: [
                     SizedBox(
                       width: 32, // Reduced from 44
-                      child: IconButton(
+                  child: IconButton(
                         icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
-                        onPressed: _showProfessionEditDialog,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: _buildDayHeaders(dates),
-                      ),
-                    ),
-                  ],
+                    onPressed: _showProfessionEditDialog,
+                    padding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
-              
+                Expanded(
+                  child: Row(
+                    children: _buildDayHeaders(dates),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
               // Calendar section with dynamic height - no top margin
               Container(
                 height: _calculateCalendarHeight(),
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No top margin
-                child: _buildUnifiedShiftView(shiftTitles),
-              ),
+              child: _buildUnifiedShiftView(shiftTitles),
+          ),
 
-              // Show workers button when section is hidden
-              if (!_showWorkerSection) Container(
+          // Show workers button when section is hidden
+          if (!_showWorkerSection) Container(
                 height: 28, // Reduced from 32
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // FIXED: No bottom margin to remove gap
-                decoration: BoxDecoration(
+            decoration: BoxDecoration(
                   color: const Color(0xFFC2DFE3), // Light blue
                   border: Border.all(color: const Color(0xFF9DB4C0), width: 1), // Cadet gray border
-                ),
-                child: Center(
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _showWorkerSection = true),
+            ),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: () => setState(() => _showWorkerSection = true),
                     icon: const Icon(Icons.visibility, size: 12), // Smaller icon
                     label: const Text('Show Workers', style: TextStyle(fontSize: 10)), // Smaller text
-                    style: TextButton.styleFrom(
+                style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFF253237), // Gunmetal text
                       padding: EdgeInsets.zero, // Remove padding
                       minimumSize: const Size(0, 0), // Remove minimum size
-                    ),
-                  ),
                 ),
               ),
+            ),
+          ),
 
               // Worker list - takes remaining space with strict overflow control
               if (_showWorkerSection) Expanded(
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No bottom margin to prevent overflow
-                  decoration: BoxDecoration(
-                    color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white,
                     border: Border.all(color: const Color(0xFF9DB4C0), width: 1),
                   ),
                   child: LayoutBuilder(
@@ -2631,10 +3013,10 @@ class _WeekViewState extends State<WeekView> {
                     },
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
+                      ),
+                    ],
+                  ),
+                ),
       ),
     );
   }
@@ -2670,10 +3052,7 @@ class _WeekViewState extends State<WeekView> {
               title: const Text('TYÖNTEKIJÄT', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const EmployeeSettingsView()),
-                );
+                _navigateToEmployeeSettings();
               },
             ),
             const Divider(color: Colors.white54),
@@ -2740,7 +3119,13 @@ class _WeekViewState extends State<WeekView> {
   }
 
   List<Widget> _buildResizeHandles(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    final blockKey = '${employee.id}-$shiftTitle-$blockLane-$blockStartDay';
+    // 🔥 CONSISTENT KEY GENERATION - Use profession-based key for resize handles
+    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    if (professionInfo == null) return [];
+    
+    final profession = professionInfo['profession'] as EmployeeRole;
+    final professionRow = professionInfo['professionRow'] as int;
+    final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     
     // 🔥 FIND THE SPAN USING PROFESSION-BASED KEYS!
     final thisBlockKeys = <String>[];

@@ -133,7 +133,7 @@ class _ShiftSectionState extends State<ShiftSection> {
         final day = int.tryParse(keyParts[1]);
         final lane = int.tryParse(keyParts[2]);
         if (day != null && lane != null) {
-          final employeeKey = '${employee.id}-$lane';
+          final employeeKey = '${employee.id}|$lane';
           employeeDays.putIfAbsent(employeeKey, () => []);
           employeeDays[employeeKey]!.add(day);
         }
@@ -144,7 +144,7 @@ class _ShiftSectionState extends State<ShiftSection> {
     for (final entry in employeeDays.entries) {
       final employeeKey = entry.key;
       final days = entry.value..sort();
-      final keyParts = employeeKey.split('-');
+      final keyParts = employeeKey.split('|');
       final employeeId = keyParts[0];
       final lane = int.parse(keyParts[1]);
       

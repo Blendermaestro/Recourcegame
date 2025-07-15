@@ -66,4 +66,10 @@ class VacationManager {
         .toList()
         ..sort((a, b) => a.startDate.compareTo(b.startDate));
   }
+
+  static Future<void> clearAll() async {
+    _vacations.clear();
+    await saveVacations();
+    print('VacationManager: All vacation data cleared');
+  }
 } 
