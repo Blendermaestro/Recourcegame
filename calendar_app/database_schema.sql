@@ -43,6 +43,37 @@ CREATE TABLE IF NOT EXISTS public.week_settings (
     UNIQUE(user_id, week_number, shift_type, profession)
 );
 
+-- Create custom professions table for user-defined profession names
+CREATE TABLE IF NOT EXISTS public.custom_professions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    profession_id TEXT NOT NULL, -- matches CustomProfession.id
+    name TEXT NOT NULL,
+    short_name TEXT NOT NULL,
+    default_day_visible BOOLEAN DEFAULT TRUE,
+    default_night_visible BOOLEAN DEFAULT TRUE,
+    default_rows INTEGER DEFAULT 1 CHECK (default_rows >= 1 AND default_rows <= 4),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, profession_id)
+);
+
+-- Create vacation absences table
+CREATE TABLE IF NOT EXISTS public.vacation_absences (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    vacation_id TEXT NOT NULL, -- matches VacationAbsence.id
+    employee_id TEXT NOT NULL, -- references employee IDs
+    employee_name TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('vacation', 'sickLeave', 'personalLeave', 'other')),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, vacation_id)
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_employees_user_id ON public.employees(user_id);
 CREATE INDEX IF NOT EXISTS idx_employees_category ON public.employees(category);
@@ -51,6 +82,10 @@ CREATE INDEX IF NOT EXISTS idx_work_assignments_week ON public.work_assignments(
 CREATE INDEX IF NOT EXISTS idx_work_assignments_employee ON public.work_assignments(employee_id);
 CREATE INDEX IF NOT EXISTS idx_week_settings_user_id ON public.week_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_week_settings_week ON public.week_settings(week_number);
+CREATE INDEX IF NOT EXISTS idx_custom_professions_user_id ON public.custom_professions(user_id);
+CREATE INDEX IF NOT EXISTS idx_vacation_absences_user_id ON public.vacation_absences(user_id);
+CREATE INDEX IF NOT EXISTS idx_vacation_absences_employee ON public.vacation_absences(employee_id);
+CREATE INDEX IF NOT EXISTS idx_vacation_absences_dates ON public.vacation_absences(start_date, end_date);
 
 -- Function to update updated_at timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -65,6 +100,8 @@ $$ language 'plpgsql';
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.work_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.week_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_professions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vacation_absences ENABLE ROW LEVEL SECURITY;
 
 -- Row Level Security Policies for employees table
 DROP POLICY IF EXISTS "Users can view their own employees" ON public.employees;
@@ -129,6 +166,48 @@ CREATE POLICY "Users can delete their own settings"
 ON public.week_settings FOR DELETE 
 USING (auth.uid() = user_id);
 
+-- Row Level Security Policies for custom_professions table
+DROP POLICY IF EXISTS "Users can view their own custom professions" ON public.custom_professions;
+CREATE POLICY "Users can view their own custom professions" 
+ON public.custom_professions FOR SELECT 
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their own custom professions" ON public.custom_professions;
+CREATE POLICY "Users can insert their own custom professions" 
+ON public.custom_professions FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own custom professions" ON public.custom_professions;
+CREATE POLICY "Users can update their own custom professions" 
+ON public.custom_professions FOR UPDATE 
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their own custom professions" ON public.custom_professions;
+CREATE POLICY "Users can delete their own custom professions" 
+ON public.custom_professions FOR DELETE 
+USING (auth.uid() = user_id);
+
+-- Row Level Security Policies for vacation_absences table
+DROP POLICY IF EXISTS "Users can view their own vacation absences" ON public.vacation_absences;
+CREATE POLICY "Users can view their own vacation absences" 
+ON public.vacation_absences FOR SELECT 
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their own vacation absences" ON public.vacation_absences;
+CREATE POLICY "Users can insert their own vacation absences" 
+ON public.vacation_absences FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their own vacation absences" ON public.vacation_absences;
+CREATE POLICY "Users can update their own vacation absences" 
+ON public.vacation_absences FOR UPDATE 
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their own vacation absences" ON public.vacation_absences;
+CREATE POLICY "Users can delete their own vacation absences" 
+ON public.vacation_absences FOR DELETE 
+USING (auth.uid() = user_id);
+
 -- Create triggers for updated_at
 DROP TRIGGER IF EXISTS update_employees_updated_at ON public.employees;
 CREATE TRIGGER update_employees_updated_at
@@ -143,6 +222,16 @@ CREATE TRIGGER update_work_assignments_updated_at
 DROP TRIGGER IF EXISTS update_week_settings_updated_at ON public.week_settings;
 CREATE TRIGGER update_week_settings_updated_at
     BEFORE UPDATE ON public.week_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_custom_professions_updated_at ON public.custom_professions;
+CREATE TRIGGER update_custom_professions_updated_at
+    BEFORE UPDATE ON public.custom_professions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_vacation_absences_updated_at ON public.vacation_absences;
+CREATE TRIGGER update_vacation_absences_updated_at
+    BEFORE UPDATE ON public.vacation_absences
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Create user profiles table for tier management

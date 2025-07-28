@@ -74,6 +74,103 @@ class SharedDataService {
   }
 
   // WORK ASSIGNMENTS - Load and convert to view format
+  // PROFESSION SETTINGS - Cloud storage methods
+  static Future<void> saveProfessionSettings({
+    required int weekNumber,
+    required Map<EmployeeRole, bool> dayProfessions,
+    required Map<EmployeeRole, bool> nightProfessions,
+    required Map<EmployeeRole, int> dayRows,
+    required Map<EmployeeRole, int> nightRows,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      List<Map<String, dynamic>> settingsToUpsert = [];
+
+      // Day shift settings
+      for (final entry in dayProfessions.entries) {
+        settingsToUpsert.add({
+          'user_id': userId,
+          'week_number': weekNumber,
+          'shift_type': 'day',
+          'profession': entry.key.name,
+          'is_visible': entry.value,
+          'row_count': dayRows[entry.key] ?? 1,
+        });
+      }
+
+      // Night shift settings
+      for (final entry in nightProfessions.entries) {
+        settingsToUpsert.add({
+          'user_id': userId,
+          'week_number': weekNumber,
+          'shift_type': 'night',
+          'profession': entry.key.name,
+          'is_visible': entry.value,
+          'row_count': nightRows[entry.key] ?? 1,
+        });
+      }
+
+      if (settingsToUpsert.isNotEmpty) {
+        await _supabase
+            .from('week_settings')
+            .upsert(settingsToUpsert, onConflict: 'user_id,week_number,shift_type,profession');
+      }
+      
+      print('SharedDataService: Saved profession settings for week $weekNumber');
+    } catch (e) {
+      print('SharedDataService: Error saving profession settings: $e');
+      rethrow;
+    }
+  }
+  
+  static Future<Map<String, dynamic>> loadProfessionSettings(int weekNumber) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      final response = await _supabase
+          .from('week_settings')
+          .select()
+          .eq('user_id', userId)
+          .eq('week_number', weekNumber);
+
+      final dayProfessions = <EmployeeRole, bool>{};
+      final nightProfessions = <EmployeeRole, bool>{};
+      final dayRows = <EmployeeRole, int>{};
+      final nightRows = <EmployeeRole, int>{};
+
+      for (final setting in response) {
+        final profession = _stringToEmployeeRole(setting['profession']);
+        if (profession != null) {
+          final isVisible = setting['is_visible'] ?? true;
+          final rowCount = setting['row_count'] ?? 1;
+          
+          if (setting['shift_type'] == 'day') {
+            dayProfessions[profession] = isVisible;
+            dayRows[profession] = rowCount;
+          } else if (setting['shift_type'] == 'night') {
+            nightProfessions[profession] = isVisible;
+            nightRows[profession] = rowCount;
+          }
+        }
+      }
+
+      print('SharedDataService: Loaded profession settings for week $weekNumber');
+      
+      return {
+        'dayProfessions': dayProfessions,
+        'nightProfessions': nightProfessions,
+        'dayRows': dayRows,
+        'nightRows': nightRows,
+      };
+    } catch (e) {
+      print('SharedDataService: Error loading profession settings: $e');
+      return {};
+    }
+  }
+
   static Future<Map<String, Employee>> loadAssignments(int weekNumber) async {
     try {
       // Load assignments and week settings in parallel

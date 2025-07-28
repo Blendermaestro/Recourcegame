@@ -4,6 +4,7 @@ import 'package:calendar_app/views/year_view/year_view.dart';
 import 'package:calendar_app/views/auth/auth_view.dart';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:calendar_app/services/supabase_config.dart';
+import 'package:calendar_app/services/migration_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:calendar_app/models/user_tier.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,6 +96,16 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     super.initState();
     _currentWeek = widget.initialWeek;
     _loadUserTier();
+    _runMigration(); // Safely migrate local data to Supabase
+  }
+  
+  /// Safely migrate local data to Supabase (one-time per user)
+  void _runMigration() async {
+    try {
+      await MigrationService.runMigration();
+    } catch (e) {
+      print('MainNavigationView: Migration error (non-critical): $e');
+    }
   }
 
   Future<void> _loadUserTier() async {
