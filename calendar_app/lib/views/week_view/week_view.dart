@@ -597,39 +597,19 @@ class _WeekViewState extends State<WeekView> {
   
     Future<void> _performCloudSave({bool force = false}) async {
     if (!force && (!_hasPendingChanges || _isDragActive || _isSaving)) {
-      print('WeekView: Skipping cloud save - force:$force, hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
       return;
     }
     
     _isSaving = true;
     _hasPendingChanges = false;
     _lastSaveTime = DateTime.now();
-    print('WeekView: 🚀 Starting cloud save operation...');
-    
-    // 🔥 DEBUG: Check Supabase connection
-    try {
-      final user = SharedDataService.supabase.auth.currentUser;
-      print('WeekView: 👤 Current user: ${user?.id ?? "NOT LOGGED IN"}');
-      print('WeekView: 💾 Current assignments to save: ${_assignments.length}');
-      
-      // Test connection
-      final testQuery = await SharedDataService.supabase.from('employees').select('id').limit(1);
-      print('WeekView: 🔗 Supabase connection test: ${testQuery.length} rows returned');
-      
-    } catch (e) {
-      print('WeekView: ❌ Supabase connection failed: $e');
-      _isSaving = false;
-      return;
-    }
 
     try {
       await _saveAssignments();
-      print('WeekView: ✅ Cloud save successful');
+      print('✅ Assignments saved successfully');
     } catch (e) {
-      print('WeekView: ❌ Cloud save failed: $e');
-      print('WeekView: ❌ Error details: ${e.toString()}');
-      _hasPendingChanges = true; // Retry later
-      // Don't reload assignments during active drag operations
+      print('❌ Save failed: $e');
+      _hasPendingChanges = true;
       if (!_isDragActive) {
         _showCloudSaveError();
       }
@@ -792,26 +772,24 @@ class _WeekViewState extends State<WeekView> {
       if (assignmentsToSave.isNotEmpty) {
 
         
-        // Save assignments one by one with conflict resolution
+        // 🔥 DIRECT FIX: Force delete then insert to bypass constraint issues
         for (final assignment in assignmentsToSave) {
           try {
-            await SharedDataService.supabase.from('work_assignments').upsert(
-              [assignment],
-              onConflict: 'week_number,day_index,shift_type,lane', // 🔥 SHARED: No user_id
-              ignoreDuplicates: false
-            );
-          } catch (e) {
-            // If upsert fails due to constraint, delete conflicting record first
-            
+            // Always delete existing assignment at this position first
             await SharedDataService.supabase.from('work_assignments')
               .delete()
               .eq('week_number', assignment['week_number'])
               .eq('day_index', assignment['day_index'])
               .eq('shift_type', assignment['shift_type'])
-              .eq('lane', assignment['lane']); // 🔥 SHARED: No user_id filter
+              .eq('lane', assignment['lane']);
             
-            // Now insert the new assignment
+            // Then insert the new assignment
             await SharedDataService.supabase.from('work_assignments').insert([assignment]);
+            
+            print('✅ Saved assignment: Week ${assignment['week_number']}, Day ${assignment['day_index']}, Lane ${assignment['lane']}');
+          } catch (e) {
+            print('❌ Failed to save assignment: $e');
+            throw e;
           }
         }
       }
@@ -830,17 +808,9 @@ class _WeekViewState extends State<WeekView> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('assignments');
       
-      print('WeekView: ✅ Successfully saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length} assignments to Supabase database');
+      print('✅ Saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length}');
       
-      // 🔥 DEBUG: Verify what was actually saved
-      if (assignmentsToSave.isNotEmpty) {
-        print('WeekView: 📋 Saved assignments:');
-        for (final assignment in assignmentsToSave.take(3)) { // Show first 3
-          print('  - Week ${assignment['week_number']}, Day ${assignment['day_index']}, Lane ${assignment['lane']}, Employee: ${assignment['employee_id']}');
-        }
-      }
-      
-      // 🔥 FORCE REFRESH SHARED DATA - Ensure other views see the changes
+      // Force refresh to ensure UI shows latest data
       await _refreshAssignmentsFromSupabase();
     } catch (e) {
       print('WeekView: Error saving assignments: $e');
