@@ -76,6 +76,7 @@ class _WeekViewState extends State<WeekView> {
   Timer? _saveDebounceTimer;
   bool _hasPendingChanges = false;
   bool _isDragActive = false; // Protect drag states during saves
+  bool _hasLoadedOnce = false; // Track if we've loaded assignments at least once
   
   @override
   void initState() {
@@ -336,7 +337,7 @@ class _WeekViewState extends State<WeekView> {
     });
     
     // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
-    print('WeekView: Drag ended - scheduling save for ${daysToAllocate.length} assignments');
+    print('WeekView: 🎯 DRAG ENDED - ${employee.name} assigned to ${daysToAllocate.length} days. Scheduling save...');
     _scheduleCloudSave();
     _dragOriginalAssignment = null;
     
@@ -413,7 +414,7 @@ class _WeekViewState extends State<WeekView> {
     });
     
     // 🔥 INSTANT UI + FORCE SAVE FOR RESIZE OPERATIONS
-    print('WeekView: Resize ended - forcing immediate save for $duration day assignment ($removedCount removed)');
+    print('WeekView: 📏 RESIZE ENDED - ${employee.name} resized to $duration days ($removedCount removed). Forcing save...');
     _hasPendingChanges = true;
     
     // Cancel any pending saves and force immediate save for resize operations
@@ -431,6 +432,7 @@ class _WeekViewState extends State<WeekView> {
     });
     
     // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
+    print('WeekView: 🗑️ REMOVE - ${employee.name} removed from ${shiftTitle}. Scheduling save...');
     _scheduleCloudSave();
   }
 
@@ -575,20 +577,20 @@ class _WeekViewState extends State<WeekView> {
     // Reduce throttle to 1 second and add debug logging
     final now = DateTime.now();
     if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(seconds: 1)) {
-      print('WeekView: Save throttled - too recent (${now.difference(_lastSaveTime!).inMilliseconds}ms ago)');
+      print('WeekView: ⏳ Save throttled - too recent (${now.difference(_lastSaveTime!).inMilliseconds}ms ago)');
       _hasPendingChanges = true; // Still mark as pending for retry
       return;
     }
 
     _hasPendingChanges = true;
-    print('WeekView: Scheduling cloud save in 800ms...');
+    print('WeekView: ⏰ Scheduling cloud save in 800ms... (Current assignments: ${_assignments.length})');
     _saveDebounceTimer?.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 800), () {
       if (_hasPendingChanges && !_isDragActive && !_isSaving) {
-        print('WeekView: Executing scheduled cloud save...');
+        print('WeekView: 🚀 Executing scheduled cloud save...');
         _performCloudSave();
       } else {
-        print('WeekView: Skipping save - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
+        print('WeekView: ⏸️ Skipping save - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
       }
     });
   }
@@ -813,6 +815,9 @@ class _WeekViewState extends State<WeekView> {
       await prefs.remove('assignments');
       
       print('WeekView: ✅ Successfully saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length} assignments to Supabase database');
+      
+      // 🔥 FORCE REFRESH SHARED DATA - Ensure other views see the changes
+      await _refreshAssignmentsFromSupabase();
     } catch (e) {
       print('WeekView: Error saving assignments: $e');
       rethrow; // Let calling code handle the error appropriately
@@ -826,10 +831,11 @@ class _WeekViewState extends State<WeekView> {
       return;
     }
     
-    // 🔥 CHECK IF ASSIGNMENTS ALREADY EXIST - Prevent unnecessary database reloads
+    // 🔥 ALWAYS RELOAD ASSIGNMENTS ON VIEW INIT - Ensure latest data
+    // Only skip reload during active drag operations or if explicitly optimizing
     final existingCount = SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber);
-    if (!forceReload && existingCount > 0) {
-      print('WeekView: Found ${existingCount} existing assignments for week ${widget.weekNumber}, skipping database reload');
+    if (!forceReload && existingCount > 0 && _hasLoadedOnce) {
+      print('WeekView: Found ${existingCount} existing assignments for week ${widget.weekNumber}, using cached data');
       if (mounted) {
         setState(() {});
       }
@@ -850,6 +856,9 @@ class _WeekViewState extends State<WeekView> {
       SharedAssignmentData.updateAssignmentsForWeek(widget.weekNumber, supabaseAssignments);
       
       print('WeekView: Loaded ${SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber)} assignments for week ${widget.weekNumber} (Total: ${SharedAssignmentData.assignmentCount})');
+      
+      _hasLoadedOnce = true; // Mark as loaded
+      
       if (mounted && !_isDragActive) {
         setState(() {});
       }
@@ -862,6 +871,28 @@ class _WeekViewState extends State<WeekView> {
           setState(() {});
         }
       }
+    }
+  }
+
+  /// Force refresh assignments from Supabase to sync with other views
+  Future<void> _refreshAssignmentsFromSupabase() async {
+    try {
+      print('WeekView: 🔄 Force refreshing assignments from Supabase...');
+      
+      // Load fresh assignments from Supabase
+      final freshAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
+      
+      // Update SharedAssignmentData with fresh data
+      SharedAssignmentData.updateAssignmentsForWeek(widget.weekNumber, freshAssignments);
+      
+      print('WeekView: ✅ Refreshed ${freshAssignments.length} assignments from Supabase');
+      
+      // Update UI
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('WeekView: ❌ Error refreshing assignments: $e');
     }
   }
 
