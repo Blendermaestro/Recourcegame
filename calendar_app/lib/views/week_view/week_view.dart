@@ -604,13 +604,30 @@ class _WeekViewState extends State<WeekView> {
     _isSaving = true;
     _hasPendingChanges = false;
     _lastSaveTime = DateTime.now();
-    print('WeekView: Starting cloud save operation...');
+    print('WeekView: 🚀 Starting cloud save operation...');
+    
+    // 🔥 DEBUG: Check Supabase connection
+    try {
+      final user = SharedDataService.supabase.auth.currentUser;
+      print('WeekView: 👤 Current user: ${user?.id ?? "NOT LOGGED IN"}');
+      print('WeekView: 💾 Current assignments to save: ${_assignments.length}');
+      
+      // Test connection
+      final testQuery = await SharedDataService.supabase.from('employees').select('id').limit(1);
+      print('WeekView: 🔗 Supabase connection test: ${testQuery.length} rows returned');
+      
+    } catch (e) {
+      print('WeekView: ❌ Supabase connection failed: $e');
+      _isSaving = false;
+      return;
+    }
 
     try {
       await _saveAssignments();
-      print('✅ Cloud save successful');
+      print('WeekView: ✅ Cloud save successful');
     } catch (e) {
-      print('❌ Cloud save failed: $e');
+      print('WeekView: ❌ Cloud save failed: $e');
+      print('WeekView: ❌ Error details: ${e.toString()}');
       _hasPendingChanges = true; // Retry later
       // Don't reload assignments during active drag operations
       if (!_isDragActive) {
@@ -814,6 +831,14 @@ class _WeekViewState extends State<WeekView> {
       await prefs.remove('assignments');
       
       print('WeekView: ✅ Successfully saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length} assignments to Supabase database');
+      
+      // 🔥 DEBUG: Verify what was actually saved
+      if (assignmentsToSave.isNotEmpty) {
+        print('WeekView: 📋 Saved assignments:');
+        for (final assignment in assignmentsToSave.take(3)) { // Show first 3
+          print('  - Week ${assignment['week_number']}, Day ${assignment['day_index']}, Lane ${assignment['lane']}, Employee: ${assignment['employee_id']}');
+        }
+      }
       
       // 🔥 FORCE REFRESH SHARED DATA - Ensure other views see the changes
       await _refreshAssignmentsFromSupabase();
