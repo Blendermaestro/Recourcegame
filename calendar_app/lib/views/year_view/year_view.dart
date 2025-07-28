@@ -71,6 +71,9 @@ class _YearViewState extends State<YearView> {
   
   void _onAssignmentDataChanged() {
     if (mounted) {
+      // Reload profession settings to sync with any changes from WeekView
+      _loadProfessionSettings();
+      
       // Force immediate UI refresh when assignment data changes
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {

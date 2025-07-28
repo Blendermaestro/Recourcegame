@@ -890,6 +890,9 @@ class _WeekViewState extends State<WeekView> {
       await prefs.setString('week_night_rows', nightRowsJson);
       
       print('WeekView: Saved profession settings for ${_weekDayShiftProfessions.length} weeks');
+      
+      // Notify other views that profession settings have changed
+      SharedAssignmentData.forceRefresh();
     } catch (e) {
       print('WeekView: Error saving profession settings: $e');
     }
@@ -897,28 +900,93 @@ class _WeekViewState extends State<WeekView> {
 
   Future<void> _loadProfessionSettings() async {
     try {
-      // 🔥 FALLBACK TO DEFAULTS - Database table doesn't exist, use consistent defaults
-      print('WeekView: Using consistent default profession settings');
-      _setDefaultProfessionSettings();
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load profession settings - using same keys as YearView
+      final dayProfessionsJson = prefs.getString('week_day_professions');
+      final nightProfessionsJson = prefs.getString('week_night_professions');
+      final dayRowsJson = prefs.getString('week_day_rows');
+      final nightRowsJson = prefs.getString('week_night_rows');
+      
+      // Load day profession settings
+      if (dayProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayProfessionsJson);
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekDayShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      // Load night profession settings
+      if (nightProfessionsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightProfessionsJson);
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> profs = entry.value;
+          _weekNightShiftProfessions[week] = Map.fromEntries(
+            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
+          );
+        }
+      }
+      
+      // Load day row settings
+      if (dayRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(dayRowsJson);
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekDayShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      // Load night row settings
+      if (nightRowsJson != null) {
+        final Map<String, dynamic> data = json.decode(nightRowsJson);
+        for (final entry in data.entries) {
+          final week = int.parse(entry.key);
+          final Map<String, dynamic> rows = entry.value;
+          _weekNightShiftRows[week] = Map.fromEntries(
+            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
+          );
+        }
+      }
+      
+      print('WeekView: Loaded profession settings from SharedPreferences for ${_weekDayShiftProfessions.length} weeks');
+      
+      // If no settings found, use defaults
+      if (dayProfessionsJson == null && nightProfessionsJson == null && dayRowsJson == null && nightRowsJson == null) {
+        print('WeekView: No saved settings found, using defaults');
+        _setDefaultProfessionSettings();
+      }
+      
+      // Update UI after loading settings
+      if (mounted) {
+        setState(() {});
+      }
+      
     } catch (e) {
       print('WeekView: Error loading profession settings: $e');
       _setDefaultProfessionSettings();
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
   /// Set default profession settings as fallback
   void _setDefaultProfessionSettings() {
-    _dayShiftProfessions.clear();
-    _dayShiftRows.clear();
-    _nightShiftProfessions.clear();
-    _nightShiftRows.clear();
+    // Initialize default settings for the current week
+    _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
+    _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
+    _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
+    _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
     
-    for (final profession in EmployeeRole.values) {
-      _dayShiftProfessions[profession] = true;
-      _dayShiftRows[profession] = 1;
-      _nightShiftProfessions[profession] = true;
-      _nightShiftRows[profession] = 1;
-    }
+    print('WeekView: Set default profession settings for week ${widget.weekNumber}');
   }
 
   /// Convert string to EmployeeRole (same as SharedDataService)
