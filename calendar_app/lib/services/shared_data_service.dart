@@ -173,11 +173,13 @@ class SharedDataService {
 
   static Future<Map<String, Employee>> loadAssignments(int weekNumber) async {
     try {
-      // Load assignments and week settings in parallel
+      // 🔥 SHARED DATA - No user authentication required for viewing
+      
+      // Load assignments, employees, and week settings in parallel
       final assignmentsFuture = _supabase
           .from('work_assignments')
           .select('*, employees(*)')
-          .eq('week_number', weekNumber);
+          .eq('week_number', weekNumber); // 🔥 SHARED: No user filter
       
       final daySettingsFuture = _supabase
           .from('week_settings')

@@ -780,7 +780,7 @@ class _WeekViewState extends State<WeekView> {
           try {
             await SharedDataService.supabase.from('work_assignments').upsert(
               [assignment],
-              onConflict: 'user_id,week_number,day_index,shift_type,lane',
+              onConflict: 'week_number,day_index,shift_type,lane', // 🔥 SHARED: No user_id
               ignoreDuplicates: false
             );
           } catch (e) {
@@ -788,11 +788,10 @@ class _WeekViewState extends State<WeekView> {
             
             await SharedDataService.supabase.from('work_assignments')
               .delete()
-              .eq('user_id', assignment['user_id'])
               .eq('week_number', assignment['week_number'])
               .eq('day_index', assignment['day_index'])
               .eq('shift_type', assignment['shift_type'])
-              .eq('lane', assignment['lane']);
+              .eq('lane', assignment['lane']); // 🔥 SHARED: No user_id filter
             
             // Now insert the new assignment
             await SharedDataService.supabase.from('work_assignments').insert([assignment]);

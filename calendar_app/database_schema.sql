@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS public.employees (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create work assignments table
+-- Create work assignments table - SHARED DATA (no user_id in constraint)
 CREATE TABLE IF NOT EXISTS public.work_assignments (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE, -- Track who made the assignment but data is shared
     employee_id UUID REFERENCES public.employees(id) ON DELETE CASCADE,
     week_number INTEGER NOT NULL CHECK (week_number >= 1 AND week_number <= 52),
     day_index INTEGER NOT NULL CHECK (day_index >= 0 AND day_index <= 6),
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.work_assignments (
     shift_title TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, week_number, day_index, shift_type, lane)
+    UNIQUE(week_number, day_index, shift_type, lane) -- 🔥 SHARED: No user_id in constraint
 );
 
 -- Create week settings table for profession configurations
@@ -124,26 +124,26 @@ CREATE POLICY "Users can delete their own employees"
 ON public.employees FOR DELETE 
 USING (auth.uid() = user_id);
 
--- Row Level Security Policies for work_assignments table
-DROP POLICY IF EXISTS "Users can view their own assignments" ON public.work_assignments;
-CREATE POLICY "Users can view their own assignments" 
+-- Row Level Security Policies for work_assignments table - SHARED DATA
+DROP POLICY IF EXISTS "Anyone can view shared assignments" ON public.work_assignments;
+CREATE POLICY "Anyone can view shared assignments" 
 ON public.work_assignments FOR SELECT 
-USING (auth.uid() = user_id);
+USING (true); -- 🔥 SHARED: Anyone can view
 
-DROP POLICY IF EXISTS "Users can insert their own assignments" ON public.work_assignments;
-CREATE POLICY "Users can insert their own assignments" 
+DROP POLICY IF EXISTS "Anyone can insert shared assignments" ON public.work_assignments;
+CREATE POLICY "Anyone can insert shared assignments" 
 ON public.work_assignments FOR INSERT 
-WITH CHECK (auth.uid() = user_id);
+WITH CHECK (true); -- 🔥 SHARED: Anyone can insert
 
-DROP POLICY IF EXISTS "Users can update their own assignments" ON public.work_assignments;
-CREATE POLICY "Users can update their own assignments" 
+DROP POLICY IF EXISTS "Anyone can update shared assignments" ON public.work_assignments;
+CREATE POLICY "Anyone can update shared assignments" 
 ON public.work_assignments FOR UPDATE 
-USING (auth.uid() = user_id);
+USING (true); -- 🔥 SHARED: Anyone can update
 
-DROP POLICY IF EXISTS "Users can delete their own assignments" ON public.work_assignments;
-CREATE POLICY "Users can delete their own assignments" 
+DROP POLICY IF EXISTS "Anyone can delete shared assignments" ON public.work_assignments;
+CREATE POLICY "Anyone can delete shared assignments" 
 ON public.work_assignments FOR DELETE 
-USING (auth.uid() = user_id);
+USING (true); -- 🔥 SHARED: Anyone can delete
 
 -- Row Level Security Policies for week_settings table
 DROP POLICY IF EXISTS "Users can view their own settings" ON public.week_settings;
