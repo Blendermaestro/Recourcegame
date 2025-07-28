@@ -772,24 +772,34 @@ class _WeekViewState extends State<WeekView> {
       if (assignmentsToSave.isNotEmpty) {
 
         
-        // 🔥 DIRECT FIX: Force delete then insert to bypass constraint issues
+        // Save assignments with upsert - works with both old and new schema
         for (final assignment in assignmentsToSave) {
           try {
-            // Always delete existing assignment at this position first
-            await SharedDataService.supabase.from('work_assignments')
-              .delete()
-              .eq('week_number', assignment['week_number'])
-              .eq('day_index', assignment['day_index'])
-              .eq('shift_type', assignment['shift_type'])
-              .eq('lane', assignment['lane']);
-            
-            // Then insert the new assignment
-            await SharedDataService.supabase.from('work_assignments').insert([assignment]);
-            
-            print('✅ Saved assignment: Week ${assignment['week_number']}, Day ${assignment['day_index']}, Lane ${assignment['lane']}');
+            // Try with new shared constraint first
+            await SharedDataService.supabase.from('work_assignments').upsert(
+              [assignment],
+              onConflict: 'week_number,day_index,shift_type,lane',
+              ignoreDuplicates: false
+            );
           } catch (e) {
-            print('❌ Failed to save assignment: $e');
-            throw e;
+            try {
+              // Fallback: try with old user-specific constraint
+              await SharedDataService.supabase.from('work_assignments').upsert(
+                [assignment],
+                onConflict: 'user_id,week_number,day_index,shift_type,lane',
+                ignoreDuplicates: false
+              );
+            } catch (e2) {
+              // Last resort: delete then insert
+              await SharedDataService.supabase.from('work_assignments')
+                .delete()
+                .eq('week_number', assignment['week_number'])
+                .eq('day_index', assignment['day_index'])
+                .eq('shift_type', assignment['shift_type'])
+                .eq('lane', assignment['lane']);
+              
+              await SharedDataService.supabase.from('work_assignments').insert([assignment]);
+            }
           }
         }
       }
