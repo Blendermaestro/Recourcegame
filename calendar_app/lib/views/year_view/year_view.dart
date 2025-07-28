@@ -138,81 +138,48 @@ class _YearViewState extends State<YearView> {
 
   Future<void> _loadProfessionSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      // 🔥 100% SUPABASE STORAGE - Load settings for current week
+      final supabaseData = await SharedDataService.loadProfessionSettings(_currentWeek);
       
-      // Load profession settings - using same keys as WeekView
-      final dayProfessionsJson = prefs.getString('week_day_professions');
-      final nightProfessionsJson = prefs.getString('week_night_professions');
-      final dayRowsJson = prefs.getString('week_day_rows');
-      final nightRowsJson = prefs.getString('week_night_rows');
-      
-      if (dayProfessionsJson != null) {
-        final Map<String, dynamic> data = json.decode(dayProfessionsJson);
-        _weekDayShiftProfessions.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> profs = entry.value;
-          _weekDayShiftProfessions[week] = Map.fromEntries(
-            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
-          );
+      if (supabaseData.isNotEmpty) {
+        final dayProfessions = supabaseData['dayProfessions'] as Map<EmployeeRole, bool>?;
+        final nightProfessions = supabaseData['nightProfessions'] as Map<EmployeeRole, bool>?;
+        final dayRows = supabaseData['dayRows'] as Map<EmployeeRole, int>?;
+        final nightRows = supabaseData['nightRows'] as Map<EmployeeRole, int>?;
+        
+        if (dayProfessions != null && dayProfessions.isNotEmpty) {
+          _weekDayShiftProfessions[_currentWeek] = Map.from(dayProfessions);
         }
+        if (nightProfessions != null && nightProfessions.isNotEmpty) {
+          _weekNightShiftProfessions[_currentWeek] = Map.from(nightProfessions);
+        }
+        if (dayRows != null && dayRows.isNotEmpty) {
+          _weekDayShiftRows[_currentWeek] = Map.from(dayRows);
+        }
+        if (nightRows != null && nightRows.isNotEmpty) {
+          _weekNightShiftRows[_currentWeek] = Map.from(nightRows);
+        }
+        
+        print('YearView: ✅ Loaded profession settings from Supabase for week $_currentWeek');
+      } else {
+        print('YearView: No settings found in Supabase for week $_currentWeek, using defaults');
       }
       
-      if (nightProfessionsJson != null) {
-        final Map<String, dynamic> data = json.decode(nightProfessionsJson);
-        _weekNightShiftProfessions.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> profs = entry.value;
-          _weekNightShiftProfessions[week] = Map.fromEntries(
-            profs.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as bool))
-          );
-        }
-      }
-      
-      if (dayRowsJson != null) {
-        final Map<String, dynamic> data = json.decode(dayRowsJson);
-        _weekDayShiftRows.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> rows = entry.value;
-          _weekDayShiftRows[week] = Map.fromEntries(
-            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
-          );
-        }
-      }
-      
-      if (nightRowsJson != null) {
-        final Map<String, dynamic> data = json.decode(nightRowsJson);
-        _weekNightShiftRows.clear();
-        for (final entry in data.entries) {
-          final week = int.parse(entry.key);
-          final Map<String, dynamic> rows = entry.value;
-          _weekNightShiftRows[week] = Map.fromEntries(
-            rows.entries.map((e) => MapEntry(EmployeeRole.values.byName(e.key), e.value as int))
-          );
-        }
-      }
-      
-      print('Year View: Loaded profession settings from SharedPreferences');
       if (mounted) {
         setState(() {});
       }
     } catch (e) {
-      print('Year View: Error loading profession settings: $e');
+      print('YearView: ❌ Error loading profession settings from Supabase: $e');
     }
   }
 
   Future<void> _loadCustomProfessions() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString('custom_professions');
-      if (jsonString != null) {
-        final json = jsonDecode(jsonString);
-        CustomProfessionManager.fromJson(json);
-      }
+      // 🔥 100% SUPABASE STORAGE - Load custom professions from cloud
+      await CustomProfessionManager.loadFromSupabase(SharedDataService.supabase);
+      print('YearView: ✅ Loaded ${CustomProfessionManager.allCustomProfessions.length} custom professions from Supabase');
     } catch (e) {
-      print('Year View: Error loading custom professions: $e');
+      print('YearView: ❌ Error loading custom professions from Supabase: $e');
     }
   }
 

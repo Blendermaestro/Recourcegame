@@ -324,4 +324,69 @@ class CustomProfessionManager {
       }
     }
   }
+  
+  // 🔥 SUPABASE INTEGRATION - Cloud storage methods
+  static Future<void> saveToSupabase(dynamic supabaseClient) async {
+    try {
+      final userId = supabaseClient.auth.currentUser?.id;
+      if (userId == null) return;
+      
+      // Clear existing custom professions for this user
+      await supabaseClient.from('custom_professions').delete().eq('user_id', userId);
+      
+      // Insert all current custom professions
+      final List<Map<String, dynamic>> professionsToInsert = [];
+      for (final profession in _customProfessions.values) {
+        professionsToInsert.add({
+          'user_id': userId,
+          'profession_id': profession.id,
+          'name': profession.name,
+          'short_name': profession.shortName,
+          'default_day_visible': profession.defaultDayVisible,
+          'default_night_visible': profession.defaultNightVisible,
+          'default_rows': profession.defaultRows,
+        });
+      }
+      
+      if (professionsToInsert.isNotEmpty) {
+        await supabaseClient.from('custom_professions').insert(professionsToInsert);
+      }
+      
+      print('CustomProfessionManager: Saved ${professionsToInsert.length} custom professions to Supabase');
+    } catch (e) {
+      print('CustomProfessionManager: Error saving to Supabase: $e');
+      rethrow;
+    }
+  }
+  
+  static Future<void> loadFromSupabase(dynamic supabaseClient) async {
+    try {
+      final userId = supabaseClient.auth.currentUser?.id;
+      if (userId == null) return;
+      
+      final response = await supabaseClient
+          .from('custom_professions')
+          .select()
+          .eq('user_id', userId);
+      
+      _customProfessions.clear();
+      
+      for (final row in response) {
+        final profession = CustomProfession(
+          id: row['profession_id'],
+          name: row['name'],
+          shortName: row['short_name'],
+          defaultDayVisible: row['default_day_visible'] ?? true,
+          defaultNightVisible: row['default_night_visible'] ?? true,
+          defaultRows: row['default_rows'] ?? 1,
+        );
+        _customProfessions[profession.id] = profession;
+      }
+      
+      print('CustomProfessionManager: Loaded ${_customProfessions.length} custom professions from Supabase');
+    } catch (e) {
+      print('CustomProfessionManager: Error loading from Supabase: $e');
+      rethrow;
+    }
+  }
 } 

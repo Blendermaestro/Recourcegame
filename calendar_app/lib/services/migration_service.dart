@@ -119,10 +119,10 @@ class MigrationService {
             'user_id': userId,
             'vacation_id': vacation.id,
             'employee_id': vacation.employeeId,
-            'employee_name': vacation.employeeName,
             'start_date': vacation.startDate.toIso8601String().split('T')[0], // Date only
             'end_date': vacation.endDate.toIso8601String().split('T')[0], // Date only
             'type': vacation.type.name,
+            'reason': vacation.reason,
             'notes': vacation.notes,
           });
         }

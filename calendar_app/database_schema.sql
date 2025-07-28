@@ -64,10 +64,10 @@ CREATE TABLE IF NOT EXISTS public.vacation_absences (
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     vacation_id TEXT NOT NULL, -- matches VacationAbsence.id
     employee_id TEXT NOT NULL, -- references employee IDs
-    employee_name TEXT NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('vacation', 'sickLeave', 'personalLeave', 'other')),
+    type TEXT NOT NULL CHECK (type IN ('loma', 'poissaolo')),
+    reason TEXT,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
