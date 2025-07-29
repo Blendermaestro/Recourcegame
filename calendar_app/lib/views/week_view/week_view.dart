@@ -163,6 +163,11 @@ class _WeekViewState extends State<WeekView> {
     return currentWeek.clamp(1, 52);
   }
 
+  double _getEffectiveWidth() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return kIsWeb && screenWidth > 800 ? 800.0 : screenWidth;
+  }
+
   @override
   void dispose() {
     _saveDebounceTimer?.cancel();
@@ -2109,7 +2114,7 @@ class _WeekViewState extends State<WeekView> {
       
       if (dragState != null) {
       // 🔥 GRID SNAPPING CALCULATION
-      final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7;
+      final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7;
       final gridLeft = 40;
       
       // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
@@ -2250,6 +2255,7 @@ class _WeekViewState extends State<WeekView> {
                 });
               },
               child: Container(
+                      height: 25.2, // Match employee name block height
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Reduced padding
                 margin: const EdgeInsets.only(bottom: 2),
                 decoration: BoxDecoration(
@@ -2617,7 +2623,7 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    final dayWidth = (MediaQuery.of(context).size.width - 32 - 8) / 7; // 32px profession column + 8px margins
+    final dayWidth = (_getEffectiveWidth() - 32 - 8) / 7; // 32px profession column + 8px margins
     
     // Calculate total rows for current shift
     int totalRows = 0;
@@ -2792,7 +2798,7 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
+    final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
     
     // Calculate total rows for both shifts
     int dayShiftRows = 0;
@@ -3217,7 +3223,7 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          final dayWidth = (MediaQuery.of(context).size.width - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
+          final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
           final gridLeft = 40; // Profession column width
           final relativeX = localPosition.dx - gridLeft;
           final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
@@ -3345,16 +3351,6 @@ class _WeekViewState extends State<WeekView> {
                         icon: const Icon(Icons.arrow_forward_ios, size: 12),
                         color: widget.weekNumber < 52 ? Colors.white : Colors.white38,
                         padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    // Fullscreen button
-                    SizedBox(
-                      width: 32,
-                      child: IconButton(
-                        onPressed: _toggleFullscreen,
-                        icon: const Icon(Icons.fullscreen, size: 14, color: Colors.white),
-                        padding: EdgeInsets.zero,
-                        tooltip: 'Fullscreen',
                       ),
                     ),
                     // Current week button
@@ -3592,6 +3588,14 @@ class _WeekViewState extends State<WeekView> {
               onTap: () {
                 Navigator.pop(context);
                 _navigateToEmployeeSettings();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.fullscreen, color: Colors.white),
+              title: const Text('FULLSCREEN', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleFullscreen();
               },
             ),
             const Divider(color: Colors.white54),

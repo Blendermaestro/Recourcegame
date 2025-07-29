@@ -877,9 +877,9 @@ class _YearViewState extends State<YearView> {
                   const SizedBox(width: 8),
                   Expanded(
                       child: Text(
-                      'DISPLAY MODE - WEEK $_currentWeek',
+                      'DISPLAY - W$_currentWeek',
                         style: const TextStyle(
-                        fontSize: 14, // Reduced from 18
+                        fontSize: 10, // Tiny size to match phone screen
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
@@ -911,14 +911,6 @@ class _YearViewState extends State<YearView> {
                   ),
 
                   const SizedBox(width: 8), // Reduced spacing
-                  
-                  // Fullscreen button
-                  IconButton(
-                    onPressed: _toggleFullscreen,
-                    icon: const Icon(Icons.fullscreen, size: 16, color: Colors.white),
-                    padding: EdgeInsets.zero,
-                    tooltip: 'Fullscreen',
-                  ),
                   
                   // Only show EDIT button for Tier 1 users
                   if (_userTier.canAccessWeekView) ...[
@@ -1037,6 +1029,14 @@ class _YearViewState extends State<YearView> {
               onTap: () {
                 Navigator.pop(context);
                 _navigateToEmployeeSettings();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.fullscreen, color: Colors.white),
+              title: const Text('FULLSCREEN', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleFullscreen();
               },
             ),
             const Divider(color: Colors.white54),
