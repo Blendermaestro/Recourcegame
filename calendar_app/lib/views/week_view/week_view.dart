@@ -250,7 +250,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.varu1: true,
     EmployeeRole.varu2: true,
     EmployeeRole.varu3: true,
-    EmployeeRole.varu4: true,
+    EmployeeRole.varu4: false,
     EmployeeRole.pasta1: false,
     EmployeeRole.pasta2: true,
     EmployeeRole.ict: false,
@@ -1133,11 +1133,15 @@ class _WeekViewState extends State<WeekView> {
         builder: (context) {
           return StatefulBuilder(
             builder: (context, setDialogState) {
-              return AlertDialog(
-                title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.black87)),
-                content: Container(
-                    width: 400,
-                    height: 500,
+              return Dialog.fullscreen(
+                child: Scaffold(
+                  appBar: AppBar(
+                    title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.white)),
+                    backgroundColor: const Color(0xFF253237),
+                    foregroundColor: Colors.white,
+                  ),
+                  body: Container(
+                    padding: const EdgeInsets.all(16),
                   child: DefaultTabController(
                     length: 2,
                     child: Column(
@@ -1158,45 +1162,11 @@ class _WeekViewState extends State<WeekView> {
                             ],
                           ),
                         ),
-                        // Add custom profession button
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showAddCustomProfessionDialog(setDialogState),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Custom Profession'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF5C6B73),
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                        // 🔧 DEBUG: Reset data button
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _forceRefreshProfessionData();
-                              setDialogState(() {}); // Refresh dialog
-                            },
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Reset Data'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                     ),
                   ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Close', style: TextStyle(color: Color(0xFF5C6B73))),
-                  ),
-                ],
+                ),
               );
             },
           );
@@ -1375,7 +1345,7 @@ class _WeekViewState extends State<WeekView> {
                 ElevatedButton.icon(
                   onPressed: _canAddMoreProfessions() ? () => _addNewProfession(setDialogState) : null,
                   icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add Profession'),
+                  label: const Text('Add'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -1385,7 +1355,7 @@ class _WeekViewState extends State<WeekView> {
                 ElevatedButton.icon(
                   onPressed: activeSlotsOnly.isNotEmpty ? () => _removeProfession(setDialogState) : null,
                   icon: const Icon(Icons.remove, size: 16),
-                  label: const Text('Remove Profession'),
+                  label: const Text('Delete'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
@@ -1449,7 +1419,7 @@ class _WeekViewState extends State<WeekView> {
                                   _getRoleDisplayName(role),
                                   style: const TextStyle(
                                     color: Colors.black87,
-                                    fontSize: 14, // Smaller font for compact width
+                                    fontSize: 12, // Even smaller font for better mobile experience
                                     fontWeight: FontWeight.w600,
                                   ),
                                   textAlign: TextAlign.center,
@@ -1467,7 +1437,6 @@ class _WeekViewState extends State<WeekView> {
                         ),
                       ),
                       // Row count controls
-                      const Text('Rivejä: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
                       // Decrease button
                       IconButton(
                         onPressed: rowCount > 1 ? () {
@@ -1492,7 +1461,7 @@ class _WeekViewState extends State<WeekView> {
                         child: Text(
                           '$rowCount',
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Colors.black87,
                           ),
@@ -1829,7 +1798,7 @@ class _WeekViewState extends State<WeekView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove Profession'),
+        title: const Text('Delete Profession'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
