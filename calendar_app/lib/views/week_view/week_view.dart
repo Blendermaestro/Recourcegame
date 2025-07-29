@@ -106,12 +106,16 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   void dispose() {
-    // 🔥 SAVE BEFORE LEAVING - Ensure no data loss on view switch
-    if (_hasPendingChanges && !_isSaving) {
-      // Don't use _performCloudSave - just trigger a final scheduled save
-      _scheduleCloudSave();
-    }
     _saveDebounceTimer?.cancel();
+    
+    // 🔥 FORCE IMMEDIATE SAVE - Don't rely on debounced timer during dispose
+    if (_hasPendingChanges && !_isDragActive && !_isSaving) {
+      print('WeekView: Force saving pending changes on dispose...');
+      _forceSave().catchError((e) {
+        print('WeekView: Error in dispose force save: $e');
+      });
+    }
+    
     super.dispose();
   }
 
