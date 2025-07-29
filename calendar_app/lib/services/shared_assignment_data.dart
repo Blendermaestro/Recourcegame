@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 
 /// 🔥 SHARED ASSIGNMENT DATA - Single source of truth for both WeekView and YearView
 class SharedAssignmentData {
-  // Shared assignment data between all views
+  // Shared assignment data between all views - now year-aware
   static final Map<String, Employee> assignments = {};
+  
+  // Current year for data filtering
+  static int currentYear = 2025;
   
   // Callbacks for when data changes
   static final List<VoidCallback> _changeListeners = [];
@@ -137,6 +140,59 @@ class SharedAssignmentData {
     }
   }
 
+  /// Generate year-aware assignment key
+  static String generateYearAwareKey(int year, String originalKey) {
+    return 'Y$year-$originalKey';
+  }
+
+  /// Parse year from year-aware key, returns null if not year-aware
+  static int? parseYearFromKey(String key) {
+    if (key.startsWith('Y') && key.contains('-')) {
+      final parts = key.split('-');
+      if (parts.isNotEmpty) {
+        final yearPart = parts[0].substring(1); // Remove 'Y' prefix
+        return int.tryParse(yearPart);
+      }
+    }
+    return null;
+  }
+
+  /// Remove year prefix from key
+  static String removeYearPrefix(String key) {
+    if (key.startsWith('Y') && key.contains('-')) {
+      final dashIndex = key.indexOf('-');
+      return key.substring(dashIndex + 1);
+    }
+    return key;
+  }
+
+  /// Get assignments for specific year
+  static Map<String, Employee> getAssignmentsForYear(int year) {
+    final yearAssignments = <String, Employee>{};
+    final yearPrefix = 'Y$year-';
+    
+    for (final entry in assignments.entries) {
+      if (entry.key.startsWith(yearPrefix)) {
+        final originalKey = removeYearPrefix(entry.key);
+        yearAssignments[originalKey] = entry.value;
+      }
+    }
+    
+    return yearAssignments;
+  }
+
+  /// Set assignment for specific year
+  static void setAssignmentForYear(int year, String originalKey, Employee employee) {
+    final yearAwareKey = generateYearAwareKey(year, originalKey);
+    assignments[yearAwareKey] = employee;
+  }
+
+  /// Remove assignment for specific year
+  static void removeAssignmentForYear(int year, String originalKey) {
+    final yearAwareKey = generateYearAwareKey(year, originalKey);
+    assignments.remove(yearAwareKey);
+  }
+
   /// Clear all data (useful for logout/reset)
   static void clearAll() {
     assignments.clear();
@@ -144,22 +200,30 @@ class SharedAssignmentData {
     weekNightShiftProfessions.clear();
     weekDayShiftRows.clear();
     weekNightShiftRows.clear();
+    customProfessionNames.clear();
+    customProfessionFullNames.clear();
+    customCategoryColors.clear();
+    activeProfessionSlots.clear();
     print('SharedAssignmentData - Cleared all data');
   }
   
-  /// Clear assignments for a specific week
+  /// Clear assignments for a specific week in current year
   static void clearWeek(int weekNumber, {bool notifyListeners = true}) {
     final beforeCount = assignments.length;
+    final yearPrefix = 'Y$currentYear-';
     assignments.removeWhere((key, value) {
-      final parts = key.split('-');
-      if (parts.isNotEmpty) {
-        final week = int.tryParse(parts[0]);
-        return week == weekNumber;
+      if (key.startsWith(yearPrefix)) {
+        final originalKey = removeYearPrefix(key);
+        final parts = originalKey.split('-');
+        if (parts.isNotEmpty) {
+          final week = int.tryParse(parts[0]);
+          return week == weekNumber;
+        }
       }
       return false;
     });
     final clearedCount = beforeCount - assignments.length;
-    print('SharedAssignmentData - Cleared week $weekNumber: removed $clearedCount assignments, ${assignments.length} remaining');
+    print('SharedAssignmentData - Cleared week $weekNumber for year $currentYear: removed $clearedCount assignments, ${assignments.length} remaining');
     
     // Notify listeners that data has changed (unless suppressed)
     if (clearedCount > 0 && notifyListeners) {
@@ -203,14 +267,17 @@ class SharedAssignmentData {
     }
   }
   
-  /// Update assignments for a specific week and notify listeners
+  /// Update assignments for a specific week and notify listeners - now year-aware
   static void updateAssignmentsForWeek(int weekNumber, Map<String, Employee> newAssignments) {
-    // First, clear existing assignments for this week (without notifying)
+    // First, clear existing assignments for this week in current year (without notifying)
     clearWeek(weekNumber, notifyListeners: false);
     
-    // Then add the new assignments (they should all be for this week)
-    assignments.addAll(newAssignments);
-    print('SharedAssignmentData - Updated week $weekNumber with ${newAssignments.length} assignments (Total: ${assignmentCount})');
+    // Then add the new assignments with year prefixes for current year
+    for (final entry in newAssignments.entries) {
+      final yearAwareKey = generateYearAwareKey(currentYear, entry.key);
+      assignments[yearAwareKey] = entry.value;
+    }
+    print('SharedAssignmentData - Updated week $weekNumber for year $currentYear with ${newAssignments.length} assignments (Total: ${assignmentCount})');
     
     // Notify listeners once after both clear and add operations
     _notifyListeners();

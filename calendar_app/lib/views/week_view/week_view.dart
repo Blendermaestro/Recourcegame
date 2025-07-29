@@ -45,8 +45,8 @@ class WeekView extends StatefulWidget {
 }
 
 class _WeekViewState extends State<WeekView> {
-  // 🔥 SHARED ASSIGNMENT DATA - Use truly shared data class
-  Map<String, Employee> get _assignments => SharedAssignmentData.assignments;
+  // 🔥 SHARED ASSIGNMENT DATA - Use truly shared data class with year awareness
+  Map<String, Employee> get _assignments => SharedAssignmentData.getAssignmentsForYear(_currentYear);
   
   Map<int, Map<EmployeeRole, bool>> get _weekDayShiftProfessions => SharedAssignmentData.weekDayShiftProfessions;
   Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
@@ -121,6 +121,7 @@ class _WeekViewState extends State<WeekView> {
       if (savedYear != null && mounted) {
         setState(() {
           _currentYear = savedYear;
+          SharedAssignmentData.currentYear = savedYear; // Update shared year
         });
       }
     } catch (e) {
@@ -360,7 +361,7 @@ class _WeekViewState extends State<WeekView> {
       if (existingRowDays.isEmpty) {
         // NEW ROW: Remove any existing assignments for this row first (shouldn't be any)
         for (final key in existingRowKeys) {
-          _assignments.remove(key);
+          SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
         }
       }
       
@@ -377,8 +378,8 @@ class _WeekViewState extends State<WeekView> {
       // Add assignments for all days we need to allocate
       for (final day in daysToAllocate) {
         final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-        _assignments[key] = employee;
-        print('WeekView: Added assignment $key -> ${employee.name}');
+        SharedAssignmentData.setAssignmentForYear(_currentYear, key, employee);
+        print('WeekView: Added assignment Y$_currentYear-$key -> ${employee.name}');
       }
     });
     
@@ -433,7 +434,7 @@ class _WeekViewState extends State<WeekView> {
         print('WeekView: Removing $removedCount original assignments during resize for ${employee.name}');
         for (final key in originalKeys) {
           print('WeekView: Removing original assignment: $key');
-          _assignments.remove(key);
+          SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
         }
         
         // 🔥 SECOND: Use consistent overlap removal for target area
@@ -450,8 +451,8 @@ class _WeekViewState extends State<WeekView> {
         // THIRD: Add new resized block
         for (final day in targetDays) {
           final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-          _assignments[key] = employee;
-          print('WeekView: Resize added assignment $key -> ${employee.name}');
+          SharedAssignmentData.setAssignmentForYear(_currentYear, key, employee);
+          print('WeekView: Resize added assignment Y$_currentYear-$key -> ${employee.name}');
         }
       });
       
@@ -490,7 +491,7 @@ class _WeekViewState extends State<WeekView> {
         .toList();
     
     for (final key in keysToRemove) {
-      _assignments.remove(key);
+      SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
     }
   }
 
@@ -517,7 +518,7 @@ class _WeekViewState extends State<WeekView> {
     if (thisBlockKeys.isNotEmpty) {
       setState(() {
         for (final key in thisBlockKeys) {
-          _assignments.remove(key);
+          SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
         }
       });
       
@@ -739,7 +740,7 @@ class _WeekViewState extends State<WeekView> {
         // Sort by key to ensure consistent behavior, then keep first
         entry.value.sort();
         for (int i = 1; i < entry.value.length; i++) {
-          _assignments.remove(entry.value[i]);
+          SharedAssignmentData.removeAssignmentForYear(_currentYear, entry.value[i]);
           duplicatesRemoved++;
         }
       }
@@ -1536,7 +1537,7 @@ class _WeekViewState extends State<WeekView> {
     
     // Remove the assignments (this moves them back to workers list)
     for (final key in assignmentsToRemove) {
-      _assignments.remove(key);
+      SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
     }
     
     // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
@@ -3041,7 +3042,7 @@ class _WeekViewState extends State<WeekView> {
                           final key = _generateAssignmentKey(widget.weekNumber, originalShift, originalDay, profession, professionRow);
                           
                           setState(() {
-                            _assignments[key] = originalEmployee;
+                            SharedAssignmentData.setAssignmentForYear(_currentYear, key, originalEmployee);
                           });
                           
                           // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
@@ -3864,7 +3865,7 @@ class _WeekViewState extends State<WeekView> {
     
     // Remove all overlapping assignments
     for (final key in keysToRemove) {
-      _assignments.remove(key);
+      SharedAssignmentData.removeAssignmentForYear(_currentYear, key);
     }
     
     if (keysToRemove.isNotEmpty) {

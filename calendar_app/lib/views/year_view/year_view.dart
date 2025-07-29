@@ -39,8 +39,8 @@ class _YearViewState extends State<YearView> {
   int _selectedYear = 2025; // Default year, can be changed
   UserTier _userTier = UserTier.tier1;
   
-  // 🔥 SHARED DATA - Use truly shared data class
-  Map<String, Employee> get _assignments => SharedAssignmentData.assignments;
+  // 🔥 SHARED DATA - Use truly shared data class with year awareness
+  Map<String, Employee> get _assignments => SharedAssignmentData.getAssignmentsForYear(_selectedYear);
   Map<int, Map<EmployeeRole, bool>> get _weekDayShiftProfessions => SharedAssignmentData.weekDayShiftProfessions;
   Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
   Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
@@ -106,6 +106,7 @@ class _YearViewState extends State<YearView> {
       if (savedYear != null && mounted) {
         setState(() {
           _selectedYear = savedYear;
+          SharedAssignmentData.currentYear = savedYear; // Update shared year
         });
       }
     } catch (e) {
@@ -154,6 +155,7 @@ class _YearViewState extends State<YearView> {
                 onTap: () {
                   setState(() {
                     _selectedYear = year;
+                    SharedAssignmentData.currentYear = year; // Update shared year
                   });
                   _saveSelectedYear();
                   Navigator.pop(context);
