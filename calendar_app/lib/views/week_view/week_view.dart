@@ -721,6 +721,9 @@ class _WeekViewState extends State<WeekView> {
       // 🔥 DEDUPLICATE ASSIGNMENTS - Remove duplicate employees
       _deduplicateAssignments();
       
+      // 🔥 SAVE PROFESSION SETTINGS FIRST - Ensure load uses same settings as save
+      await _saveProfessionSettings();
+      
       // 🔥 ATOMIC APPROACH: Clear entire week first, then insert all assignments
       print('🔥 ATOMIC SAVE: Clearing week ${widget.weekNumber} assignments...');
       
@@ -757,6 +760,7 @@ class _WeekViewState extends State<WeekView> {
               });
               
               assignmentKeys.add(constraintKey);
+              print('🔥 SAVE: Assignment ${entry.value.name} -> week:${parsed['weekNumber']} day:${parsed['day']} shift:${parsed['shiftTitle']} lane:$lane');
             }
           }
         }
