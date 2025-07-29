@@ -69,6 +69,9 @@ class _WeekViewState extends State<WeekView> {
   // Toggle for hiding worker section
   bool _showWorkerSection = true;
   
+  // Current year for display
+  int _currentYear = 2025;
+  
   // Tab state - 0 for day shift, 1 for night shift
   int _currentTabIndex = 0;
   
@@ -101,6 +104,7 @@ class _WeekViewState extends State<WeekView> {
       _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
     }
     
+    _loadCurrentYear(); // Load the selected year
     _clearOldDataOnFirstRun(); // Clear old data during migration
     _loadCustomProfessions(); // Load custom professions first
     _loadProfessionNames(); // Load custom profession names
@@ -108,6 +112,20 @@ class _WeekViewState extends State<WeekView> {
     _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
+  }
+
+  Future<void> _loadCurrentYear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedYear = prefs.getInt('selected_year');
+      if (savedYear != null && mounted) {
+        setState(() {
+          _currentYear = savedYear;
+        });
+      }
+    } catch (e) {
+      print('Error loading current year: $e');
+    }
   }
 
   @override
@@ -3232,8 +3250,11 @@ class _WeekViewState extends State<WeekView> {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFE0FBFC), // Light cyan background
-        body: SafeArea(
-        child: Column(
+                body: SafeArea(
+          child: Center(
+            child: Container(
+              width: kIsWeb ? 800 : null, // A4 portrait width for PC/Web
+              child: Column(
           children: [
               // Combined week navigation + tabs bar
           Container(
@@ -3270,12 +3291,13 @@ class _WeekViewState extends State<WeekView> {
                       width: 60,
                       child: Center(
                         child: Text(
-                          'W${widget.weekNumber}',
+                          'EDIT MODE\n$_currentYear W${widget.weekNumber}',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 10,
                             fontWeight: FontWeight.bold,
-              color: Colors.white,
+                            color: Colors.white,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ),
@@ -3489,6 +3511,8 @@ class _WeekViewState extends State<WeekView> {
                     ],
                   ),
                 ),
+            ),
+          ),
       ),
     );
   }

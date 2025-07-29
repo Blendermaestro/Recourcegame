@@ -823,7 +823,10 @@ class _YearViewState extends State<YearView> {
     return Scaffold(
       backgroundColor: const Color(0xFFE0FBFC),
       body: SafeArea(
-        child: Column(
+        child: Center(
+          child: Container(
+            width: kIsWeb ? 800 : null, // A4 portrait width for PC/Web
+            child: Column(
           children: [
             // Fixed header with navigation
             Container(
@@ -987,8 +990,10 @@ class _YearViewState extends State<YearView> {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
+      ),
       ),
     );
   }
