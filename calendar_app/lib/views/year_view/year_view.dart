@@ -291,29 +291,13 @@ class _YearViewState extends State<YearView> {
     return List.generate(7, (index) => tuesdayStart.add(Duration(days: index)));
   }
 
-  // 🔥 EXACT SAME CATEGORY COLORS AS WEEK VIEW!
+  // 🔥 USE CUSTOM CATEGORY COLORS FROM SHARED DATA!
   Color _getCategoryColor(EmployeeCategory category) {
-    switch (category) {
-      case EmployeeCategory.ab:
-        return const Color(0xFFE0FBFC); // Light cyan
-      case EmployeeCategory.cd:
-        return const Color(0xFFC2DFE3); // Light blue
-      case EmployeeCategory.huolto:
-        return const Color(0xFF9DB4C0); // Cadet gray
-      case EmployeeCategory.sijainen:
-        return const Color(0xFF5C6B73); // Payne's gray
-    }
+    return SharedAssignmentData.getCategoryColor(category);
   }
 
   Color _getTextColorForCategory(EmployeeCategory category) {
-    switch (category) {
-      case EmployeeCategory.ab:
-      case EmployeeCategory.cd:
-        return const Color(0xFF253237); // Dark text on light backgrounds
-      case EmployeeCategory.huolto:
-      case EmployeeCategory.sijainen:
-        return Colors.white; // White text on darker backgrounds
-    }
+    return SharedAssignmentData.getTextColorForCategory(category);
   }
 
   Widget _buildWeekPage(int weekNumber) {

@@ -1,5 +1,6 @@
 import 'package:calendar_app/models/employee.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 /// 🔥 SHARED ASSIGNMENT DATA - Single source of truth for both WeekView and YearView
 class SharedAssignmentData {
@@ -68,10 +69,30 @@ class SharedAssignmentData {
 
   // 🔥 ACTIVE PROFESSION SLOTS - Track which configurable slots are enabled
   static final Set<EmployeeRole> activeProfessionSlots = <EmployeeRole>{};
+
+  // 🔥 CUSTOM CATEGORY COLORS - Allow users to customize category colors
+  static final Map<EmployeeCategory, Color> customCategoryColors = {
+    EmployeeCategory.ab: Colors.red[300]!,
+    EmployeeCategory.cd: Colors.blue[300]!,
+    EmployeeCategory.huolto: Colors.yellow[400]!,
+    EmployeeCategory.sijainen: Colors.green[300]!,
+  };
   
   /// Get role display name using custom names
   static String getRoleDisplayName(EmployeeRole role) {
     return customProfessionNames[role] ?? role.name.toUpperCase();
+  }
+
+  /// Get category color using custom colors
+  static Color getCategoryColor(EmployeeCategory category) {
+    return customCategoryColors[category] ?? Colors.grey[300]!;
+  }
+
+  /// Get optimal text color based on background color brightness
+  static Color getTextColorForCategory(EmployeeCategory category) {
+    final backgroundColor = getCategoryColor(category);
+    final brightness = backgroundColor.computeLuminance();
+    return brightness > 0.5 ? Colors.black87 : Colors.white;
   }
 
   /// Get compact role name for calendar display
