@@ -3302,14 +3302,16 @@ class _WeekViewState extends State<WeekView> {
     // 🔥 FIND THE SPAN USING PROFESSION-BASED KEYS!
     final thisBlockKeys = <String>[];
     
-    // Find this employee's assignment keys for this shift using profession-based parsing
+    // 🔥 FIX: Find ONLY this specific profession/row assignments, not ALL employee assignments
     final employeeKeys = _assignments.entries
         .where((entry) {
           final parsed = _parseAssignmentKey(entry.key);
           return parsed != null && 
                  parsed['weekNumber'] == widget.weekNumber && 
                  parsed['shiftTitle'] == shiftTitle && 
-                 entry.value.id == employee.id;
+                 entry.value.id == employee.id &&
+                 parsed['profession'] == profession &&
+                 parsed['professionRow'] == professionRow;
         })
         .map((e) => e.key)
         .toList();
