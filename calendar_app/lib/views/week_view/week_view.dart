@@ -129,6 +129,40 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
+  void _goToCurrentWeek() {
+    final currentWeek = _getCurrentWeek();
+    final currentYear = DateTime.now().year;
+    
+    setState(() {
+      _currentYear = currentYear;
+      SharedAssignmentData.currentYear = currentYear;
+    });
+    
+    // Save the current year
+    _saveCurrentYear();
+    
+    // Navigate to current week
+    widget.onWeekChanged?.call(currentWeek);
+  }
+
+  Future<void> _saveCurrentYear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('selected_year', _currentYear);
+    } catch (e) {
+      print('Error saving current year: $e');
+    }
+  }
+
+  int _getCurrentWeek() {
+    final now = DateTime.now();
+    final startOfYear = DateTime(now.year, 1, 1);
+    final firstMonday = startOfYear.subtract(Duration(days: startOfYear.weekday - 1));
+    final difference = now.difference(firstMonday).inDays;
+    final currentWeek = (difference / 7).floor() + 1;
+    return currentWeek.clamp(1, 52);
+  }
+
   @override
   void dispose() {
     _saveDebounceTimer?.cancel();
@@ -2289,7 +2323,7 @@ class _WeekViewState extends State<WeekView> {
                  allGroupWidgets.add(
                    Container(
                      margin: const EdgeInsets.only(bottom: 2),
-                     height: 24, // Fixed height for each row
+                     height: 25.2, // Fixed height for each row - matches grid rowHeight
                      child: Row(
                        children: [
                          // Employee card - 20% shorter to match headers
@@ -2300,7 +2334,7 @@ class _WeekViewState extends State<WeekView> {
                              feedback: Material(
                                child: Container(
                                  width: 120,
-                                 height: 24,
+                                 height: 25.2,
                                  padding: const EdgeInsets.all(2),
                                  decoration: BoxDecoration(
                                    color: _getCategoryColor(category),
@@ -3323,14 +3357,14 @@ class _WeekViewState extends State<WeekView> {
                         tooltip: 'Fullscreen',
                       ),
                     ),
-                    // Refresh button
+                    // Current week button
                     SizedBox(
                       width: 32,
                       child: IconButton(
-                        onPressed: () => _loadAssignments(forceReload: true),
-                        icon: const Icon(Icons.refresh, size: 14, color: Colors.white),
+                        onPressed: _goToCurrentWeek,
+                        icon: const Icon(Icons.today, size: 14, color: Colors.white),
                         padding: EdgeInsets.zero,
-                        tooltip: 'Refresh data',
+                        tooltip: 'Go to Current Week & Year',
                       ),
                     ),
                     // Day/Night shift tabs

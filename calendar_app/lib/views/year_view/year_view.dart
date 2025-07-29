@@ -2,6 +2,7 @@ import 'package:calendar_app/data/default_employees.dart';
 import 'package:calendar_app/models/employee.dart';
 import 'package:calendar_app/models/vacation_absence.dart';
 import 'package:calendar_app/data/vacation_manager.dart';
+import 'package:calendar_app/views/employee_settings/employee_settings_view.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -841,10 +842,10 @@ class _YearViewState extends State<YearView> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => widget.onViewChanged?.call('EDIT'),
-                    icon: const Icon(Icons.arrow_back, size: 16, color: Colors.white), // Smaller icon
+                    onPressed: () => _showMainMenu(context),
+                    icon: const Icon(Icons.menu, size: 16, color: Colors.white), // Menu icon
                     padding: EdgeInsets.zero,
-                    tooltip: 'Back to Edit Mode',
+                    tooltip: 'Main Menu',
                   ),
                   const SizedBox(width: 8), // Reduced spacing
                   // Year selector button
@@ -889,9 +890,13 @@ class _YearViewState extends State<YearView> {
                   IconButton(
                     onPressed: () {
                       final currentWeek = _getCurrentWeek();
+                      final currentYear = DateTime.now().year;
                       setState(() {
                         _currentWeek = currentWeek;
+                        _selectedYear = currentYear;
+                        SharedAssignmentData.currentYear = currentYear;
                       });
+                      _saveSelectedYear();
                       _pageController.animateToPage(
                         currentWeek - 1,
                         duration: const Duration(milliseconds: 300),
@@ -902,7 +907,7 @@ class _YearViewState extends State<YearView> {
                     },
                     icon: const Icon(Icons.today, size: 16, color: Colors.white),
                     padding: EdgeInsets.zero,
-                    tooltip: 'Go to Current Week',
+                    tooltip: 'Go to Current Week & Year',
                   ),
 
                   const SizedBox(width: 8), // Reduced spacing
@@ -996,6 +1001,71 @@ class _YearViewState extends State<YearView> {
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  // Main menu function
+  void _showMainMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF253237),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.white),
+              title: const Text('EDIT MODE', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                widget.onViewChanged?.call('EDIT');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility, color: Colors.white),
+              title: const Text('DISPLAY MODE', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                widget.onViewChanged?.call('DISPLAY');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people, color: Colors.white),
+              title: const Text('TYÖNTEKIJÄT', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToEmployeeSettings();
+              },
+            ),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: const Icon(Icons.account_circle, color: Colors.white),
+              title: Text(AuthService.currentUser?.email ?? 'User', style: const TextStyle(color: Colors.white)),
+              subtitle: const Text('Account', style: TextStyle(color: Colors.white70)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.white),
+              title: const Text('LOGOUT', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                await AuthService.signOut();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToEmployeeSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const EmployeeSettingsView(),
       ),
     );
   }
