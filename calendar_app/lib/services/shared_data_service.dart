@@ -117,9 +117,17 @@ class SharedDataService {
       }
 
       if (settingsToUpsert.isNotEmpty) {
+        // 🔥 FIX: Delete existing settings first, then insert new ones (avoid upsert conflicts)
         await _supabase
             .from('week_settings')
-            .upsert(settingsToUpsert, onConflict: 'user_id,week_number,shift_type,profession');
+            .delete()
+            .eq('user_id', userId)
+            .eq('week_number', weekNumber);
+            
+        // Insert fresh settings
+        await _supabase
+            .from('week_settings')
+            .insert(settingsToUpsert);
       }
       
       print('SharedDataService: Saved profession settings for week $weekNumber');
