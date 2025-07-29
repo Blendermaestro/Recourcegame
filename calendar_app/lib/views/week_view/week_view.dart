@@ -104,6 +104,16 @@ class _WeekViewState extends State<WeekView> {
     VacationManager.loadVacations(); // Load vacation data
   }
 
+  @override
+  void dispose() {
+    // 🔥 SAVE BEFORE LEAVING - Ensure no data loss on view switch
+    if (_hasPendingChanges) {
+      _performCloudSave(); // Force immediate save without waiting for debounce
+    }
+    _saveDebounceTimer?.cancel();
+    super.dispose();
+  }
+
   // Clear old data during migration to new Supabase system
   Future<void> _clearOldDataOnFirstRun() async {
     try {
@@ -794,7 +804,8 @@ class _WeekViewState extends State<WeekView> {
       
       print('✅ Saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length}');
       
-      // 🔥 FIX: No auto-refresh to avoid UI jumps
+      // 🔥 REFRESH SHARED DATA - Ensure other views see changes
+      await _refreshAssignmentsFromSupabase();
     } catch (e) {
       print('WeekView: Error saving assignments: $e');
       rethrow; // Let calling code handle the error appropriately
@@ -2955,8 +2966,12 @@ class _WeekViewState extends State<WeekView> {
                     SizedBox(
                       width: 32,
                       child: IconButton(
-                        onPressed: () {
-                          widget.onViewChanged?.call('VUOSI'); // FIXED PARAMETER!
+                        onPressed: () async {
+                          // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                          if (_hasPendingChanges) {
+                            await _performCloudSave();
+                          }
+                          widget.onViewChanged?.call('VUOSI');
                           HapticFeedback.lightImpact();
                         },
                         icon: const Icon(Icons.calendar_view_month, size: 14, color: Colors.white),
@@ -3067,16 +3082,24 @@ class _WeekViewState extends State<WeekView> {
             ListTile(
               leading: const Icon(Icons.calendar_view_week, color: Colors.white),
               title: const Text('VIIKKO', style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                if (_hasPendingChanges) {
+                  await _performCloudSave();
+                }
                 widget.onViewChanged?.call('VIIKKO');
               },
             ),
             ListTile(
               leading: const Icon(Icons.calendar_view_month, color: Colors.white),
               title: const Text('VUOSI', style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                if (_hasPendingChanges) {
+                  await _performCloudSave();
+                }
                 widget.onViewChanged?.call('VUOSI');
               },
             ),
