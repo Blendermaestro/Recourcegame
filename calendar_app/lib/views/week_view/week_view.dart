@@ -344,7 +344,15 @@ class _WeekViewState extends State<WeekView> {
           _assignments.remove(key);
         }
       }
-      // FILL UP mode: Keep existing assignments, just add missing days
+      
+      // 🔥 CLEAR OVERLAPPING ASSIGNMENTS: Remove any other employees in the target slots
+      _removeOverlappingAssignments(
+        shiftTitle: shiftTitle,
+        profession: profession,
+        professionRow: professionRow,
+        days: daysToAllocate,
+        excludeEmployeeId: employee.id, // Don't remove this employee's own assignments
+      );
       
       // Add assignments for all days we need to allocate
       for (final day in daysToAllocate) {
@@ -389,55 +397,55 @@ class _WeekViewState extends State<WeekView> {
       // 🔥 PROFESSION INFO ALREADY PROVIDED - No conversion needed!
       int removedCount = 0;
     
-    setState(() {
-      // SMART RESIZE WITH CONFLICT RESOLUTION
-      
-      // FIRST: Find and remove ONLY the original block being resized (exact same profession + row)
-      final originalKeys = _assignments.keys
-          .where((key) {
-            final parsed = _parseAssignmentKey(key);
-            return parsed != null &&
-                   parsed['weekNumber'] == widget.weekNumber &&
-                   parsed['shiftTitle'] == shiftTitle &&
-                   parsed['profession'] == profession &&
-                   parsed['professionRow'] == professionRow &&
-                   _assignments[key]?.id == employee.id;
-          })
-          .toList();
-      
-      // Remove the original block being resized
-      removedCount = originalKeys.length;
-      print('WeekView: Removing $removedCount original assignments during resize for ${employee.name}');
-      for (final key in originalKeys) {
-        print('WeekView: Removing original assignment: $key');
-        _assignments.remove(key);
-      }
-      
-      // SECOND: Check for conflicts with OTHER employees in the target slots (respect multi-row behavior)
-      for (int day = startDay; day < startDay + duration && day < 7; day++) {
-        final targetSlotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+      setState(() {
+        // SMART RESIZE WITH CONFLICT RESOLUTION
         
-        // Only remove if the slot is occupied by ANOTHER employee (preserve multi-row for same employee)
-        if (_assignments.containsKey(targetSlotKey) && _assignments[targetSlotKey]?.id != employee.id) {
-          _assignments.remove(targetSlotKey);
+        // FIRST: Find and remove ONLY the original block being resized (exact same profession + row)
+        final originalKeys = _assignments.keys
+            .where((key) {
+              final parsed = _parseAssignmentKey(key);
+              return parsed != null &&
+                     parsed['weekNumber'] == widget.weekNumber &&
+                     parsed['shiftTitle'] == shiftTitle &&
+                     parsed['profession'] == profession &&
+                     parsed['professionRow'] == professionRow &&
+                     _assignments[key]?.id == employee.id;
+            })
+            .toList();
+        
+        // Remove the original block being resized
+        removedCount = originalKeys.length;
+        print('WeekView: Removing $removedCount original assignments during resize for ${employee.name}');
+        for (final key in originalKeys) {
+          print('WeekView: Removing original assignment: $key');
+          _assignments.remove(key);
         }
-      }
+        
+        // 🔥 SECOND: Use consistent overlap removal for target area
+        final targetDays = List.generate(duration, (i) => startDay + i).where((day) => day < 7).toList();
+        _removeOverlappingAssignments(
+          shiftTitle: shiftTitle,
+          profession: profession,
+          professionRow: professionRow,
+          days: targetDays,
+          excludeEmployeeId: employee.id, // Don't remove this employee's assignments
+        );
+        
+        // THIRD: Add new resized block
+        for (final day in targetDays) {
+          final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+          _assignments[key] = employee;
+          print('WeekView: Resize added assignment $key -> ${employee.name}');
+        }
+      });
       
-      // THIRD: Add new resized block
-      for (int day = startDay; day < startDay + duration && day < 7; day++) {
-        final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
-        _assignments[key] = employee;
-        print('WeekView: Resize added assignment $key -> ${employee.name}');
-      }
-    });
-    
-    // 🔥 INSTANT UI + FORCE SAVE FOR RESIZE OPERATIONS
-    print('WeekView: 📏 RESIZE ENDED - ${employee.name} resized to $duration days ($removedCount removed). Forcing save...');
-    _hasPendingChanges = true;
-    
-    // Cancel any pending saves and force immediate save for resize operations
-    _saveDebounceTimer?.cancel();
-    _forceSave();
+      // 🔥 INSTANT UI + FORCE SAVE FOR RESIZE OPERATIONS
+      print('WeekView: 📏 RESIZE ENDED - ${employee.name} resized to $duration days ($removedCount removed). Forcing save...');
+      _hasPendingChanges = true;
+      
+      // Cancel any pending saves and force immediate save for resize operations
+      _saveDebounceTimer?.cancel();
+      _forceSave();
     } catch (e) {
       print('❌ Error during resize operation: $e');
       // Don't break the UI on resize errors
@@ -1493,7 +1501,18 @@ class _WeekViewState extends State<WeekView> {
     final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     
     setState(() {
-      _resizeModeBlockKey = _resizeModeBlockKey == blockKey ? null : blockKey;
+      // 🔥 FIX: Clear ALL resize modes and drag states to ensure only ONE block is editable
+      if (_resizeModeBlockKey == blockKey) {
+        // Clicking the same block - turn off resize mode
+        _resizeModeBlockKey = null;
+        _dragStates?.clear();
+        print('🔧 RESIZE: Disabled resize mode for $blockKey');
+      } else {
+        // Clicking different block - switch to this block only
+        _resizeModeBlockKey = blockKey;
+        _dragStates?.clear(); // Clear previous drag states
+        print('🔧 RESIZE: Enabled resize mode for $blockKey (cleared others)');
+      }
     });
   }
 
@@ -3442,6 +3461,39 @@ class _WeekViewState extends State<WeekView> {
     }
     
     print('✅ Profession data refreshed for week ${widget.weekNumber}');
+  }
+
+  /// Remove overlapping assignments in target area (for drag/resize operations)
+  void _removeOverlappingAssignments({
+    required String shiftTitle,
+    required EmployeeRole profession,
+    required int professionRow,
+    required List<int> days,
+    String? excludeEmployeeId, // Don't remove assignments from this employee
+  }) {
+    final keysToRemove = <String>[];
+    
+    for (final day in days) {
+      final slotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+      
+      // Remove existing assignment if it exists and isn't from the excluded employee
+      if (_assignments.containsKey(slotKey)) {
+        final existingEmployee = _assignments[slotKey];
+        if (excludeEmployeeId == null || existingEmployee?.id != excludeEmployeeId) {
+          keysToRemove.add(slotKey);
+          print('🔥 OVERLAP: Removing ${existingEmployee?.name} from $shiftTitle day $day, ${profession.name} row $professionRow');
+        }
+      }
+    }
+    
+    // Remove all overlapping assignments
+    for (final key in keysToRemove) {
+      _assignments.remove(key);
+    }
+    
+    if (keysToRemove.isNotEmpty) {
+      print('🔥 OVERLAP: Removed ${keysToRemove.length} overlapping assignments');
+    }
   }
 
 } 
