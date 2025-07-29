@@ -592,7 +592,7 @@ class _WeekViewState extends State<WeekView> {
   DateTime? _lastSaveTime;
   
     void _scheduleCloudSave() {
-    // 🔥 STRONGER THROTTLING: Prevent multiple saves within 2 seconds
+    // 🔥 REDUCED THROTTLING: Allow faster saves for debugging
     final now = DateTime.now();
     if (_isSaving) {
       print('WeekView: ⏳ Save already in progress, skipping...');
@@ -600,21 +600,22 @@ class _WeekViewState extends State<WeekView> {
       return;
     }
     
-    if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(seconds: 2)) {
+    if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(milliseconds: 500)) {
       print('WeekView: ⏳ Save throttled - too recent (${now.difference(_lastSaveTime!).inMilliseconds}ms ago)');
       _hasPendingChanges = true; // Still mark as pending for retry
       return;
     }
 
     _hasPendingChanges = true;
-    print('WeekView: ⏰ Scheduling ATOMIC save in 1000ms... (Current assignments: ${_assignments.length})');
+    print('WeekView: ⏰ Scheduling ATOMIC save in 500ms... (Current assignments: ${_assignments.length}, isDragActive: $_isDragActive)');
     _saveDebounceTimer?.cancel();
-    _saveDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      print('WeekView: 🚀 Timer fired - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
       if (_hasPendingChanges && !_isDragActive && !_isSaving) {
         print('WeekView: 🚀 Executing ATOMIC cloud save...');
         _performCloudSave();
       } else {
-        print('WeekView: ⏸️ Skipping save - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
+        print('WeekView: ⏸️ Skipping save - conditions not met');
       }
     });
   }
@@ -735,9 +736,10 @@ class _WeekViewState extends State<WeekView> {
       print('🔥 ATOMIC SAVE: Clearing week ${widget.weekNumber} assignments...');
       
       // Step 1: DELETE ALL assignments for this week (atomic clear)
-      await SharedDataService.supabase.from('work_assignments')
+      final deleteResult = await SharedDataService.supabase.from('work_assignments')
         .delete()
         .eq('week_number', widget.weekNumber);
+      print('🔥 ATOMIC DELETE: Cleared week ${widget.weekNumber} (affected: ${deleteResult.toString()})');
       
       // Step 2: Collect all assignments to save for this week
       final assignmentsToSave = <Map<String, dynamic>>[];
@@ -776,7 +778,11 @@ class _WeekViewState extends State<WeekView> {
       // Step 3: INSERT ALL assignments at once (batch insert)
       if (assignmentsToSave.isNotEmpty) {
         print('🔥 ATOMIC SAVE: Inserting ${assignmentsToSave.length} assignments...');
-        await SharedDataService.supabase.from('work_assignments').insert(assignmentsToSave);
+        print('🔥 SAMPLE ASSIGNMENT: ${assignmentsToSave.first}');
+        final insertResult = await SharedDataService.supabase.from('work_assignments').insert(assignmentsToSave);
+        print('🔥 ATOMIC INSERT: Result: ${insertResult.toString()}');
+      } else {
+        print('🔥 ATOMIC SAVE: No assignments to insert for week ${widget.weekNumber}');
       }
       
       print('✅ ATOMIC SAVE: Cleared and saved ${assignmentsToSave.length} assignments for week ${widget.weekNumber}');
