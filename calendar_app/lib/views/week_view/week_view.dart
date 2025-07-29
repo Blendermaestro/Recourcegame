@@ -1046,64 +1046,115 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _showProfessionEditDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.black87)),
-              content: Container(
-                  width: 400,
-                  height: 500,
-                child: DefaultTabController(
-                  length: 2,
-                  child: Column(
-                    children: [
-                      const TabBar(
-                        labelColor: Colors.black87,
-                        unselectedLabelColor: Colors.black54,
-                        tabs: [
-                          Tab(text: 'Day Shift'),
-                          Tab(text: 'Night Shift'),
-                        ],
-                      ),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            _buildProfessionSettings(setDialogState, true),
-                            _buildProfessionSettings(setDialogState, false),
+    // 🔥 DEBUG: Force refresh profession data to fix grayed-out issue
+    try {
+      // Ensure profession data exists for current week
+      if (!_weekDayShiftProfessions.containsKey(widget.weekNumber)) {
+        _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
+      }
+      if (!_weekNightShiftProfessions.containsKey(widget.weekNumber)) {
+        _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
+      }
+      if (!_weekDayShiftRows.containsKey(widget.weekNumber)) {
+        _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
+      }
+      if (!_weekNightShiftRows.containsKey(widget.weekNumber)) {
+        _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
+      }
+      
+      print('🔧 PROFESSION DEBUG: Week ${widget.weekNumber} - Day professions: ${_dayShiftProfessions.length}, Night professions: ${_nightShiftProfessions.length}');
+      
+      showDialog(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.black87)),
+                content: Container(
+                    width: 400,
+                    height: 500,
+                  child: DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        const TabBar(
+                          labelColor: Colors.black87,
+                          unselectedLabelColor: Colors.black54,
+                          tabs: [
+                            Tab(text: 'Day Shift'),
+                            Tab(text: 'Night Shift'),
                           ],
                         ),
-                      ),
-                      // Add custom profession button
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAddCustomProfessionDialog(setDialogState),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Custom Profession'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF5C6B73),
-                            foregroundColor: Colors.white,
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _buildProfessionSettings(setDialogState, true),
+                              _buildProfessionSettings(setDialogState, false),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+                        // Add custom profession button
+                        Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showAddCustomProfessionDialog(setDialogState),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Custom Profession'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF5C6B73),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                        // 🔧 DEBUG: Reset data button
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              _forceRefreshProfessionData();
+                              setDialogState(() {}); // Refresh dialog
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reset Data'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    ),
                   ),
-                  ),
-                ),
                 actions: [
                   TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Close', style: TextStyle(color: Colors.black87)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close', style: TextStyle(color: Color(0xFF5C6B73))),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      print('🔥 ERROR in profession dialog: $e');
+      // Show simple error dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to open profession settings: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void _showAddCustomProfessionDialog(StateSetter parentSetState) {
@@ -2987,6 +3038,11 @@ class _WeekViewState extends State<WeekView> {
                   child: IconButton(
                         icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
                     onPressed: _showProfessionEditDialog,
+                    onLongPress: () {
+                      // 🔧 DEBUG: Long press to force refresh profession data
+                      print('🔧 Long press detected - forcing profession data refresh');
+                      _forceRefreshProfessionData();
+                    },
                     padding: EdgeInsets.zero,
                   ),
                 ),
@@ -3314,5 +3370,31 @@ class _WeekViewState extends State<WeekView> {
     return handles;
   }
 
+  /// Force refresh all profession data (debug/fix method)
+  void _forceRefreshProfessionData() {
+    print('🔧 FORCING PROFESSION DATA REFRESH for week ${widget.weekNumber}');
+    
+    // Clear current data
+    _weekDayShiftProfessions.remove(widget.weekNumber);
+    _weekNightShiftProfessions.remove(widget.weekNumber);
+    _weekDayShiftRows.remove(widget.weekNumber);
+    _weekNightShiftRows.remove(widget.weekNumber);
+    
+    // Reinitialize with defaults
+    _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
+    _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
+    _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
+    _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
+    
+    // Save to database
+    _saveProfessionSettings();
+    
+    // Update UI
+    if (mounted) {
+      setState(() {});
+    }
+    
+    print('✅ Profession data refreshed for week ${widget.weekNumber}');
+  }
 
 } 
