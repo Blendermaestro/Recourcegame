@@ -593,6 +593,18 @@ class _YearViewState extends State<YearView> {
         return 'HU';
       case EmployeeRole.custom:
         return 'CU';
+      case EmployeeRole.slot1:
+      case EmployeeRole.slot2:
+      case EmployeeRole.slot3:
+      case EmployeeRole.slot4:
+      case EmployeeRole.slot5:
+      case EmployeeRole.slot6:
+      case EmployeeRole.slot7:
+      case EmployeeRole.slot8:
+      case EmployeeRole.slot9:
+      case EmployeeRole.slot10:
+        // Use custom short names for slots - fallback to slot number
+        return role.name.toUpperCase();
     }
   }
 
@@ -610,6 +622,17 @@ class _YearViewState extends State<YearView> {
       case EmployeeRole.pora: return 'PORA';
       case EmployeeRole.huolto: return 'HUOLTO';
       case EmployeeRole.custom: return 'CUSTOM';
+      case EmployeeRole.slot1:
+      case EmployeeRole.slot2:
+      case EmployeeRole.slot3:
+      case EmployeeRole.slot4:
+      case EmployeeRole.slot5:
+      case EmployeeRole.slot6:
+      case EmployeeRole.slot7:
+      case EmployeeRole.slot8:
+      case EmployeeRole.slot9:
+      case EmployeeRole.slot10:
+        return role.name.toUpperCase();
     }
   }
 

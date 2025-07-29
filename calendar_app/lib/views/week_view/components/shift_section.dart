@@ -97,6 +97,18 @@ class _ShiftSectionState extends State<ShiftSection> {
       case EmployeeRole.tarvike: return 'TARVIKE';
       case EmployeeRole.pora: return 'PORA';
       case EmployeeRole.huolto: return 'HUOLTO';
+      case EmployeeRole.custom: return 'CUSTOM';
+      case EmployeeRole.slot1:
+      case EmployeeRole.slot2:
+      case EmployeeRole.slot3:
+      case EmployeeRole.slot4:
+      case EmployeeRole.slot5:
+      case EmployeeRole.slot6:
+      case EmployeeRole.slot7:
+      case EmployeeRole.slot8:
+      case EmployeeRole.slot9:
+      case EmployeeRole.slot10:
+        return role.name.toUpperCase();
     }
   }
 
@@ -114,6 +126,16 @@ class _ShiftSectionState extends State<ShiftSection> {
       case EmployeeRole.pora: return Colors.amber[400]!;
       case EmployeeRole.huolto: return Colors.lime[400]!;
       case EmployeeRole.custom: return Colors.grey[400]!;
+      case EmployeeRole.slot1: return Colors.cyan[400]!;
+      case EmployeeRole.slot2: return Colors.deepOrange[400]!;
+      case EmployeeRole.slot3: return Colors.lightBlue[400]!;
+      case EmployeeRole.slot4: return Colors.deepPurple[400]!;
+      case EmployeeRole.slot5: return Colors.lightGreen[400]!;
+      case EmployeeRole.slot6: return Colors.redAccent[400]!;
+      case EmployeeRole.slot7: return Colors.blueAccent[400]!;
+      case EmployeeRole.slot8: return Colors.greenAccent[400]!;
+      case EmployeeRole.slot9: return Colors.orangeAccent[400]!;
+      case EmployeeRole.slot10: return Colors.purpleAccent[400]!;
     }
   }
 
