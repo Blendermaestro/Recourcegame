@@ -1484,12 +1484,12 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _toggleResizeMode(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    // Get employee's profession info for proper key generation
-    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    // 🔥 FIX: Use the specific block lane to get profession info, not any assignment
+    final professionInfo = _getAbsoluteLaneToProfession(blockLane, shiftTitle);
     if (professionInfo == null) return;
     
     final profession = professionInfo['profession'] as EmployeeRole;
-    final professionRow = professionInfo['professionRow'] as int;
+    final professionRow = professionInfo['row'] as int;
     final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     
     // 🔥 DEBUG: Log all instances of this employee to help diagnose multi-row issues
@@ -1506,7 +1506,7 @@ class _WeekViewState extends State<WeekView> {
         print('🔧   Assignment: ${parsed['profession']}.${parsed['professionRow']} day ${parsed['day']} -> blockKey: $keyBlockKey');
       }
     }
-    print('🔧 RESIZE: Toggling blockKey: $blockKey');
+    print('🔧 RESIZE: Toggling blockKey: $blockKey (from lane $blockLane -> ${profession.name}.${professionRow})');
     
     setState(() {
       // 🔥 FIX: Clear ALL resize modes and drag states to ensure only ONE block is editable
@@ -1528,13 +1528,16 @@ class _WeekViewState extends State<WeekView> {
     try {
       _isDragActive = true; // Protect from cloud saves during drag
       
-      // 🔥 GET EMPLOYEE'S PROFESSION AND ROW FROM ASSIGNMENTS
-      final employeeProfessionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
-      if (employeeProfessionInfo == null) return;
-    
-    final profession = employeeProfessionInfo['profession'] as EmployeeRole;
-    final professionRow = employeeProfessionInfo['professionRow'] as int;
-    final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
+      // 🔥 FIX: Use the current resize mode block key to get profession info
+      if (_resizeModeBlockKey == null) return;
+      
+      // Parse profession info from the current resize mode block key
+      final keyParts = _resizeModeBlockKey!.split('|');
+      if (keyParts.length != 4) return;
+      
+      final profession = EmployeeRole.values.byName(keyParts[2]);
+      final professionRow = int.parse(keyParts[3]);
+      final blockKey = _resizeModeBlockKey!;
     
     // Get current employee span
     final currentKeys = _assignments.entries
@@ -2652,17 +2655,19 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildAssignmentBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    // 🔥 CONSISTENT KEY GENERATION - Use profession-based key for resize mode
-    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    // 🔥 FIX: Use THIS specific block's lane to get the correct profession info
+    final professionInfo = _getAbsoluteLaneToProfession(blockLane, shiftTitle);
     if (professionInfo == null) {
       // Fallback if profession info not found
       return Container();
     }
     
     final profession = professionInfo['profession'] as EmployeeRole;
-    final professionRow = professionInfo['professionRow'] as int;
+    final professionRow = professionInfo['row'] as int;
     final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     final isInResizeMode = _resizeModeBlockKey == blockKey;
+    
+    print('🔧 BLOCK: ${employee.name} at lane $blockLane -> ${profession.name}.${professionRow} -> blockKey: $blockKey, resizeMode: $isInResizeMode');
     
     return RepaintBoundary(
       key: ValueKey(blockKey),
@@ -3286,12 +3291,12 @@ class _WeekViewState extends State<WeekView> {
   }
 
   List<Widget> _buildResizeHandles(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
-    // 🔥 CONSISTENT KEY GENERATION - Use profession-based key for resize handles
-    final professionInfo = _getEmployeeProfessionInfo(employee, shiftTitle);
+    // 🔥 FIX: Use THIS specific block's lane to get the correct profession info
+    final professionInfo = _getAbsoluteLaneToProfession(blockLane, shiftTitle);
     if (professionInfo == null) return [];
     
     final profession = professionInfo['profession'] as EmployeeRole;
-    final professionRow = professionInfo['professionRow'] as int;
+    final professionRow = professionInfo['row'] as int;
     final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
     
     // 🔥 FIND THE SPAN USING PROFESSION-BASED KEYS!
