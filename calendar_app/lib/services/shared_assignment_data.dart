@@ -78,13 +78,14 @@ class SharedAssignmentData {
   static String getCompactRoleName(EmployeeRole role) {
     final customName = customProfessionNames[role];
     if (customName != null) {
-      // For custom names, try to make them compact
-      if (customName.length <= 3) return customName;
-      // If longer than 3 chars, try to abbreviate
+      // For custom names, allow up to 8 characters
+      if (customName.length <= 8) return customName;
+      // If longer than 8 chars, try to abbreviate
       if (customName.contains(' ')) {
-        return customName.split(' ').map((word) => word.isNotEmpty ? word[0] : '').join('').toUpperCase();
+        final abbreviated = customName.split(' ').map((word) => word.isNotEmpty ? word[0] : '').join('').toUpperCase();
+        return abbreviated.length <= 8 ? abbreviated : abbreviated.substring(0, 8);
       }
-      return customName.length > 4 ? customName.substring(0, 4) : customName;
+      return customName.substring(0, 8);
     }
     
     // Default compact names

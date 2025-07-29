@@ -1552,10 +1552,12 @@ class _WeekViewState extends State<WeekView> {
             TextField(
               controller: shortNameController,
               decoration: const InputDecoration(
-                labelText: 'Short Name (displayed in calendar)',
+                labelText: 'Short Name (displayed in calendar, max 8 chars)',
                 hintText: 'e.g., TJ, ICT, VARU1',
+                counterText: '', // Hide the character counter
               ),
               textCapitalization: TextCapitalization.characters,
+              maxLength: 8,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -1700,14 +1702,16 @@ class _WeekViewState extends State<WeekView> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: shortNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Short Name (displayed in calendar)',
-                  hintText: 'e.g., MECH, ELECT, CLEAN',
-                ),
-                textCapitalization: TextCapitalization.characters,
-              ),
+                           TextField(
+               controller: shortNameController,
+               decoration: const InputDecoration(
+                 labelText: 'Short Name (displayed in calendar, max 8 chars)',
+                 hintText: 'e.g., MECH, ELECT, CLEAN',
+                 counterText: '', // Hide the character counter
+               ),
+               textCapitalization: TextCapitalization.characters,
+               maxLength: 8,
+             ),
               const SizedBox(height: 16),
               TextField(
                 controller: fullNameController,
