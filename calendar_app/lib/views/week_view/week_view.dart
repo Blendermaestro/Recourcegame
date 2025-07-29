@@ -2246,14 +2246,15 @@ class _WeekViewState extends State<WeekView> {
       final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
       final dragState = _dragStates?[blockKey];
       
-      // Calculate block span
+      // 🔥 FIX: Calculate block span from continuous days (handle gaps)
       final startDay = days.first;
       final endDay = days.last;
-      final duration = endDay - startDay + 1;
+      final duration = days.length; // Use actual count, not range (handles gaps)
+      print('🔥 BLOCK: ${employee.name} in ${profession.name}:$professionRow -> days:$days -> duration:$duration');
       
-      // Calculate visual position
+      // 🔥 FIX: Visual position for continuous days only  
       double visualLeft = startDay * dayWidth;
-      double visualWidth = duration * dayWidth - 1;
+      double visualWidth = _calculateContinuousWidth(days, startDay, dayWidth);
       
       // Apply drag state for visual feedback
       if (dragState != null && _resizeModeBlockKey == blockKey) {
@@ -2283,6 +2284,23 @@ class _WeekViewState extends State<WeekView> {
     }
     
     return blocks;
+  }
+
+  /// Calculate width for continuous days (handles gaps in assignments)
+  double _calculateContinuousWidth(List<int> days, int startDay, double dayWidth) {
+    if (days.isEmpty) return dayWidth - 1;
+    
+    // Find continuous segments from startDay
+    int continuousCount = 1;
+    for (int i = 1; i < days.length; i++) {
+      if (days[i] == days[i-1] + 1) {
+        continuousCount++;
+      } else {
+        break; // Stop at first gap
+      }
+    }
+    
+    return (continuousCount * dayWidth) - 1;
   }
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
