@@ -1539,14 +1539,16 @@ class _WeekViewState extends State<WeekView> {
       final professionRow = int.parse(keyParts[3]);
       final blockKey = _resizeModeBlockKey!;
     
-    // Get current employee span
+    // 🔥 FIX: Get ONLY current specific profession/row assignments, not ALL employee assignments
     final currentKeys = _assignments.entries
         .where((entry) {
           final parsed = _parseAssignmentKey(entry.key);
           return parsed != null && 
                  parsed['weekNumber'] == widget.weekNumber && 
                  parsed['shiftTitle'] == shiftTitle && 
-                 entry.value.id == employee.id;
+                 entry.value.id == employee.id &&
+                 parsed['profession'] == profession &&
+                 parsed['professionRow'] == professionRow;
         })
         .map((e) => e.key)
         .toList();
@@ -1620,14 +1622,23 @@ class _WeekViewState extends State<WeekView> {
 
 
   void _performResize(Employee employee, String shiftTitle, int targetDay, bool isLeftResize) {
-    // 🔥 FIXED: Find current employee assignments using NEW key format
+    // 🔥 FIX: Get profession info from current resize mode block key
+    if (_resizeModeBlockKey == null) return;
+    final keyParts = _resizeModeBlockKey!.split('|');
+    if (keyParts.length != 4) return;
+    final profession = EmployeeRole.values.byName(keyParts[2]);
+    final professionRow = int.parse(keyParts[3]);
+    
+    // 🔥 FIXED: Find ONLY specific profession/row assignments, not ALL employee assignments
     final currentEntries = _assignments.entries
         .where((entry) {
           final parsed = _parseAssignmentKey(entry.key);
           return parsed != null && 
                  parsed['weekNumber'] == widget.weekNumber && 
                  parsed['shiftTitle'] == shiftTitle && 
-                 entry.value.id == employee.id;
+                 entry.value.id == employee.id &&
+                 parsed['profession'] == profession &&
+                 parsed['professionRow'] == professionRow;
         })
         .toList();
     
@@ -1650,8 +1661,7 @@ class _WeekViewState extends State<WeekView> {
     
     final currentStartDay = firstParsed['day'] as int;
     final currentEndDay = lastParsed['day'] as int;
-    final profession = firstParsed['profession'] as EmployeeRole;
-    final professionRow = firstParsed['professionRow'] as int;
+    // 🔥 profession and professionRow already defined from resize mode block key
     
     int newStartDay, newEndDay;
     
@@ -2391,7 +2401,8 @@ class _WeekViewState extends State<WeekView> {
           final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
           visualWidth = (originalEnd * dayWidth + dayWidth) - visualLeft - 1;
         } else {
-          visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - visualLeft - 1;
+          // 🔥 FIX: Right resize - adjust width from original position, not from current visualLeft
+          visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - (dragState.originalStartDay * dayWidth) - 1;
         }
         
         visualLeft = visualLeft.clamp(0, 6 * dayWidth);
@@ -2569,8 +2580,8 @@ class _WeekViewState extends State<WeekView> {
               final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
               visualWidth = (originalEnd * dayWidth + dayWidth) - visualLeft - 1;
             } else {
-              // Right resize - adjust width only
-              visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - visualLeft - 1;
+              // 🔥 FIX: Right resize - adjust width from original position, not from current visualLeft
+              visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - (dragState.originalStartDay * dayWidth) - 1;
             }
             
             // Clamp to grid boundaries
@@ -2628,8 +2639,8 @@ class _WeekViewState extends State<WeekView> {
               final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
               visualWidth = (originalEnd * dayWidth + dayWidth) - visualLeft - 1;
             } else {
-              // Right resize - adjust width only
-              visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - visualLeft - 1;
+              // 🔥 FIX: Right resize - adjust width from original position, not from current visualLeft
+              visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - (dragState.originalStartDay * dayWidth) - 1;
             }
             
             // Clamp to grid boundaries
