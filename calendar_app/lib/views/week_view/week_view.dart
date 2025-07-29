@@ -108,11 +108,14 @@ class _WeekViewState extends State<WeekView> {
   void dispose() {
     _saveDebounceTimer?.cancel();
     
-    // 🔥 FORCE IMMEDIATE SAVE - Don't rely on debounced timer during dispose
+    // 🔥 FIX: Don't force async save in dispose - just mark for immediate save
     if (_hasPendingChanges && !_isDragActive && !_isSaving) {
-      print('WeekView: Force saving pending changes on dispose...');
-      _forceSave().catchError((e) {
-        print('WeekView: Error in dispose force save: $e');
+      print('WeekView: Marking for immediate save on dispose...');
+      // Schedule immediate save without waiting
+      Timer(Duration.zero, () {
+        if (!_isSaving) {
+          _performCloudSave(force: true);
+        }
       });
     }
     
@@ -2952,10 +2955,10 @@ class _WeekViewState extends State<WeekView> {
                     SizedBox(
                       width: 32,
                       child: IconButton(
-                        onPressed: () async {
-                          // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                        onPressed: () {
+                          // 🔥 FIX: Don't wait for async save during UI navigation
                           if (_hasPendingChanges) {
-                            await _performCloudSave();
+                            _forceSave();
                           }
                           widget.onViewChanged?.call('VUOSI');
                           HapticFeedback.lightImpact();
@@ -3068,11 +3071,11 @@ class _WeekViewState extends State<WeekView> {
             ListTile(
               leading: const Icon(Icons.calendar_view_week, color: Colors.white),
               title: const Text('VIIKKO', style: TextStyle(color: Colors.white)),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                // 🔥 FIX: Don't wait for async save during UI navigation
                 if (_hasPendingChanges) {
-                  await _performCloudSave();
+                  _forceSave();
                 }
                 widget.onViewChanged?.call('VIIKKO');
               },
@@ -3080,11 +3083,11 @@ class _WeekViewState extends State<WeekView> {
             ListTile(
               leading: const Icon(Icons.calendar_view_month, color: Colors.white),
               title: const Text('VUOSI', style: TextStyle(color: Colors.white)),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                // 🔥 SAVE BEFORE SWITCHING - Prevent data loss
+                // 🔥 FIX: Don't wait for async save during UI navigation
                 if (_hasPendingChanges) {
-                  await _performCloudSave();
+                  _forceSave();
                 }
                 widget.onViewChanged?.call('VUOSI');
               },
