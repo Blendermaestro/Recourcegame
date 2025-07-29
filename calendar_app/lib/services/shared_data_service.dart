@@ -88,28 +88,32 @@ class SharedDataService {
 
       List<Map<String, dynamic>> settingsToUpsert = [];
 
-      // Day shift settings
+      // Day shift settings (skip custom professions - they have their own table)
       for (final entry in dayProfessions.entries) {
-        settingsToUpsert.add({
-          'user_id': userId,
-          'week_number': weekNumber,
-          'shift_type': 'day',
-          'profession': entry.key.name,
-          'is_visible': entry.value,
-          'row_count': dayRows[entry.key] ?? 1,
-        });
+        if (entry.key != EmployeeRole.custom) {
+          settingsToUpsert.add({
+            'user_id': userId,
+            'week_number': weekNumber,
+            'shift_type': 'day',
+            'profession': entry.key.name,
+            'is_visible': entry.value,
+            'row_count': dayRows[entry.key] ?? 1,
+          });
+        }
       }
 
-      // Night shift settings
+      // Night shift settings (skip custom professions - they have their own table)
       for (final entry in nightProfessions.entries) {
-        settingsToUpsert.add({
-          'user_id': userId,
-          'week_number': weekNumber,
-          'shift_type': 'night',
-          'profession': entry.key.name,
-          'is_visible': entry.value,
-          'row_count': nightRows[entry.key] ?? 1,
-        });
+        if (entry.key != EmployeeRole.custom) {
+          settingsToUpsert.add({
+            'user_id': userId,
+            'week_number': weekNumber,
+            'shift_type': 'night',
+            'profession': entry.key.name,
+            'is_visible': entry.value,
+            'row_count': nightRows[entry.key] ?? 1,
+          });
+        }
       }
 
       if (settingsToUpsert.isNotEmpty) {
