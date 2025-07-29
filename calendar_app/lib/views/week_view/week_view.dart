@@ -1640,20 +1640,7 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
-  @override
-  void dispose() {
-    _saveDebounceTimer?.cancel();
-    
-    // Force save any pending changes before leaving
-    if (_hasPendingChanges && !_isDragActive) {
-      print('WeekView: Force saving pending changes on dispose...');
-      _forceSave().catchError((e) {
-        print('WeekView: Error in dispose force save: $e');
-      });
-    }
-    
-    super.dispose();
-  }
+  // 🔥 REMOVED DUPLICATE: dispose() method already exists above
 
   void _showEmployeeQuickFillMenu(Employee employee) {
     // Quick fill menu implementation
