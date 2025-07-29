@@ -20,7 +20,18 @@ enum EmployeeRole {
   tarvike,
   pora,
   huolto,
-  custom,   // Special role for custom professions
+  custom,   // Special role for custom professions - HIDDEN FROM UI
+  // 🔥 CONFIGURABLE PROFESSION SLOTS - Can be enabled/disabled and renamed by user
+  slot1,
+  slot2,
+  slot3,
+  slot4,
+  slot5,
+  slot6,
+  slot7,
+  slot8,
+  slot9,
+  slot10,
 }
 
 enum ShiftCycle {

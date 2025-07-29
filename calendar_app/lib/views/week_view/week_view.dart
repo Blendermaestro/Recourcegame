@@ -66,6 +66,17 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 'TARVIKE',
     EmployeeRole.pora: 'PORA',
     EmployeeRole.huolto: 'HUOLTO',
+    // Default names for configurable slots
+    EmployeeRole.slot1: 'SLOT1',
+    EmployeeRole.slot2: 'SLOT2',
+    EmployeeRole.slot3: 'SLOT3',
+    EmployeeRole.slot4: 'SLOT4',
+    EmployeeRole.slot5: 'SLOT5',
+    EmployeeRole.slot6: 'SLOT6',
+    EmployeeRole.slot7: 'SLOT7',
+    EmployeeRole.slot8: 'SLOT8',
+    EmployeeRole.slot9: 'SLOT9',
+    EmployeeRole.slot10: 'SLOT10',
   };
 
   // Full profession names for editing dialog
@@ -81,7 +92,21 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 'Tarvike',
     EmployeeRole.pora: 'Pora',
     EmployeeRole.huolto: 'Huolto',
+    // Default full names for configurable slots
+    EmployeeRole.slot1: 'Custom Profession 1',
+    EmployeeRole.slot2: 'Custom Profession 2',
+    EmployeeRole.slot3: 'Custom Profession 3',
+    EmployeeRole.slot4: 'Custom Profession 4',
+    EmployeeRole.slot5: 'Custom Profession 5',
+    EmployeeRole.slot6: 'Custom Profession 6',
+    EmployeeRole.slot7: 'Custom Profession 7',
+    EmployeeRole.slot8: 'Custom Profession 8',
+    EmployeeRole.slot9: 'Custom Profession 9',
+    EmployeeRole.slot10: 'Custom Profession 10',
   };
+
+  // 🔥 ACTIVE PROFESSION SLOTS - Track which configurable slots are enabled
+  static final Set<EmployeeRole> _activeProfessionSlots = <EmployeeRole>{};
   
   // Collapsible employee groups
   final Map<EmployeeCategory, bool> _collapsedGroups = {
@@ -1320,13 +1345,52 @@ class _WeekViewState extends State<WeekView> {
       // 🔥 DEBUG: Log profession data to help debug gray screen
       print('🔧 PROFESSION DIALOG: isDayShift=$isDayShift, professions.length=${professions.length}, rows.length=${rows.length}');
       
-      // 🔥 EXCLUDE CUSTOM from the UI as requested by user
-      final availableRoles = EmployeeRole.values.where((role) => role != EmployeeRole.custom).toList();
+      // 🔥 FILTER PROFESSIONS: Show default professions + active slots, exclude custom and inactive slots
+      final defaultProfessions = [
+        EmployeeRole.tj, EmployeeRole.varu1, EmployeeRole.varu2, EmployeeRole.varu3, EmployeeRole.varu4,
+        EmployeeRole.pasta1, EmployeeRole.pasta2, EmployeeRole.ict, EmployeeRole.tarvike, EmployeeRole.pora, EmployeeRole.huolto
+      ];
+      final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
+                              EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
+      
+      final activeSlotsOnly = slotProfessions.where((slot) => _activeProfessionSlots.contains(slot)).toList();
+      final availableRoles = [...defaultProfessions, ...activeSlotsOnly];
       
       return SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: availableRoles.map((role) {
+          children: [
+            // 🔥 PROFESSION MANAGEMENT BUTTONS
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _canAddMoreProfessions() ? () => _addNewProfession(setDialogState) : null,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Profession'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: activeSlotsOnly.isNotEmpty ? () => _removeProfession(setDialogState) : null,
+                  icon: const Icon(Icons.remove, size: 16),
+                  label: const Text('Remove Profession'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Divider(),
+            const SizedBox(height: 8),
+            // 🔥 PROFESSION LIST
+            ...availableRoles.map((role) {
             try {
               // 🔥 NULL SAFETY: Ensure values exist with proper defaults
               final isVisible = professions[role] ?? false;
@@ -1459,7 +1523,8 @@ class _WeekViewState extends State<WeekView> {
                 ),
               );
             }
-          }).toList(),
+          }),
+          ],
         ),
       );
     } catch (e) {
@@ -1587,11 +1652,13 @@ class _WeekViewState extends State<WeekView> {
       final prefs = await SharedPreferences.getInstance();
       final shortNamesJson = _customProfessionNames.map((key, value) => MapEntry(key.name, value));
       final fullNamesJson = _customProfessionFullNames.map((key, value) => MapEntry(key.name, value));
+      final activeSlotsJson = _activeProfessionSlots.map((slot) => slot.name).toList();
       
       await prefs.setString('custom_profession_short_names', json.encode(shortNamesJson));
       await prefs.setString('custom_profession_full_names', json.encode(fullNamesJson));
+      await prefs.setString('active_profession_slots', json.encode(activeSlotsJson));
       
-      print('✅ Saved custom profession names locally');
+      print('✅ Saved custom profession names and ${_activeProfessionSlots.length} active slots locally');
     } catch (e) {
       print('❌ Error saving profession names: $e');
     }
@@ -1631,11 +1698,172 @@ class _WeekViewState extends State<WeekView> {
           }
         }
       }
+
+      // Load active profession slots
+      final activeSlotsJson = prefs.getString('active_profession_slots');
+      if (activeSlotsJson != null) {
+        final List<dynamic> slotNames = json.decode(activeSlotsJson);
+        _activeProfessionSlots.clear();
+        for (final slotName in slotNames) {
+          final role = EmployeeRole.values.firstWhere(
+            (r) => r.name == slotName,
+            orElse: () => EmployeeRole.tj,
+          );
+          if (role.name.startsWith('slot')) {
+            _activeProfessionSlots.add(role);
+          }
+        }
+      }
       
-      print('✅ Loaded custom profession names');
+      print('✅ Loaded custom profession names and ${_activeProfessionSlots.length} active slots');
     } catch (e) {
       print('❌ Error loading profession names: $e');
     }
+  }
+
+  /// Check if more professions can be added
+  bool _canAddMoreProfessions() {
+    final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
+                            EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
+    return _activeProfessionSlots.length < slotProfessions.length;
+  }
+
+  /// Add a new profession slot
+  void _addNewProfession(StateSetter setDialogState) {
+    final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
+                            EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
+    
+    // Find first available slot
+    final availableSlot = slotProfessions.firstWhere(
+      (slot) => !_activeProfessionSlots.contains(slot),
+      orElse: () => EmployeeRole.slot1,
+    );
+
+    if (!_activeProfessionSlots.contains(availableSlot)) {
+      final shortNameController = TextEditingController(text: 'NEW${_activeProfessionSlots.length + 1}');
+      final fullNameController = TextEditingController(text: 'New Profession ${_activeProfessionSlots.length + 1}');
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Add New Profession'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: shortNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Short Name (displayed in calendar)',
+                  hintText: 'e.g., MECH, ELECT, CLEAN',
+                ),
+                textCapitalization: TextCapitalization.characters,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: fullNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name (displayed in settings)',
+                  hintText: 'e.g., Mechanic, Electrician, Cleaner',
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final shortName = shortNameController.text.trim().toUpperCase();
+                final fullName = fullNameController.text.trim();
+                
+                if (shortName.isNotEmpty && fullName.isNotEmpty) {
+                  setState(() {
+                    _activeProfessionSlots.add(availableSlot);
+                    _customProfessionNames[availableSlot] = shortName;
+                    _customProfessionFullNames[availableSlot] = fullName;
+                    
+                    // Set default visibility and rows for the new profession in current week
+                    final dayProfessions = _weekDayShiftProfessions[widget.weekNumber] ??= {};
+                    final nightProfessions = _weekNightShiftProfessions[widget.weekNumber] ??= {};
+                    final dayRows = _weekDayShiftRows[widget.weekNumber] ??= {};
+                    final nightRows = _weekNightShiftRows[widget.weekNumber] ??= {};
+                    
+                    dayProfessions[availableSlot] = true;
+                    nightProfessions[availableSlot] = true;
+                    dayRows[availableSlot] = 1;
+                    nightRows[availableSlot] = 1;
+                  });
+                  setDialogState(() {}); // Update the profession settings dialog
+                  _saveProfessionNames();
+                  _saveProfessionSettings();
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// Remove a profession slot
+  void _removeProfession(StateSetter setDialogState) {
+    final activeSlots = _activeProfessionSlots.toList();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Profession'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Select profession to remove:'),
+            const SizedBox(height: 16),
+            ...activeSlots.map((slot) => ListTile(
+              title: Text(_customProfessionNames[slot] ?? slot.name.toUpperCase()),
+              subtitle: Text(_customProfessionFullNames[slot] ?? 'Custom Profession'),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () {
+                  setState(() {
+                    _activeProfessionSlots.remove(slot);
+                    
+                    // Remove assignments for this profession
+                    _moveAssignmentsBackToWorkers(slot, 'Päivävuoro');
+                    _moveAssignmentsBackToWorkers(slot, 'Yövuoro');
+                    
+                    // Reset profession settings for current week
+                    final dayProfessions = _weekDayShiftProfessions[widget.weekNumber];
+                    final nightProfessions = _weekNightShiftProfessions[widget.weekNumber];
+                    final dayRows = _weekDayShiftRows[widget.weekNumber];
+                    final nightRows = _weekNightShiftRows[widget.weekNumber];
+                    
+                    dayProfessions?.remove(slot);
+                    nightProfessions?.remove(slot);
+                    dayRows?.remove(slot);
+                    nightRows?.remove(slot);
+                  });
+                  setDialogState(() {}); // Update the profession settings dialog
+                  _saveProfessionNames();
+                  _saveProfessionSettings();
+                  Navigator.pop(context);
+                },
+              ),
+            )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _toggleResizeMode(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
