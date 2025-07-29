@@ -513,11 +513,11 @@ class _YearViewState extends State<YearView> {
 
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
     const rowHeight = 20.0; // Reduced from 24.0 to fit more content
-    final screenWidth = MediaQuery.of(context).size.width;
+    final effectiveWidth = _getEffectiveWidth();
     final professionColumnWidth = 50.0;
     final containerMargins = 4.0; // 2px left + 2px right from container margins
     final borderWidth = 2.0; // 1px left + 1px right from container borders
-    final availableGridWidth = screenWidth - professionColumnWidth - containerMargins - borderWidth;
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
     final dayWidth = availableGridWidth / 7; // Precise calculation
     
     final professions = isDayShift 
@@ -806,6 +806,11 @@ class _YearViewState extends State<YearView> {
     final difference = now.difference(firstMonday).inDays;
     final currentWeek = (difference / 7).floor() + 1;
     return currentWeek.clamp(1, 52);
+  }
+
+  double _getEffectiveWidth() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return kIsWeb && screenWidth > 800 ? 800.0 : screenWidth;
   }
 
   // Fullscreen toggle functionality
