@@ -1282,112 +1282,157 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildProfessionSettings(StateSetter setDialogState, bool isDayShift) {
-    final professions = isDayShift ? _dayShiftProfessions : _nightShiftProfessions;
-    final rows = isDayShift ? _dayShiftRows : _nightShiftRows;
-    
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: EmployeeRole.values.map((role) {
-          return Card(
-            color: Colors.grey[50],
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  // Checkbox for visibility
-                  Checkbox(
-                    value: professions[role],
-                    onChanged: (bool? value) {
-                      final wasVisible = professions[role] ?? false;
-                      final willBeVisible = value ?? false;
-                      
-                      setDialogState(() {
-                        professions[role] = willBeVisible;
-                      });
-                      
-                      // If profession is being hidden, move assignments back to workers
-                      if (wasVisible && !willBeVisible) {
-                        _moveAssignmentsBackToWorkers(role, isDayShift ? 'Päivävuoro' : 'Yövuoro');
-                      }
-                      
-                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
-                      
-                      // INSTANT UPDATE - Update main UI immediately
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    },
-                  ),
-                  // Profession name
-                  Expanded(
-                    child: Text(
-                      _getRoleDisplayName(role),
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontSize: 14, // Smaller font for compact width
-                        fontWeight: FontWeight.w600,
+    try {
+      final professions = isDayShift ? _dayShiftProfessions : _nightShiftProfessions;
+      final rows = isDayShift ? _dayShiftRows : _nightShiftRows;
+      
+      // 🔥 DEBUG: Log profession data to help debug gray screen
+      print('🔧 PROFESSION DIALOG: isDayShift=$isDayShift, professions.length=${professions.length}, rows.length=${rows.length}');
+      
+      return SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: EmployeeRole.values.map((role) {
+            try {
+              // 🔥 NULL SAFETY: Ensure values exist with proper defaults
+              final isVisible = professions[role] ?? false;
+              final rowCount = rows[role] ?? 1;
+              
+              print('🔧 ROLE DEBUG: $role -> visible=$isVisible, rows=$rowCount');
+              
+              return Card(
+                color: Colors.grey[50],
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      // Checkbox for visibility
+                      Checkbox(
+                        value: isVisible,
+                        onChanged: (bool? value) {
+                          final wasVisible = isVisible;
+                          final willBeVisible = value ?? false;
+                          
+                          setDialogState(() {
+                            professions[role] = willBeVisible;
+                          });
+                          
+                          // If profession is being hidden, move assignments back to workers
+                          if (wasVisible && !willBeVisible) {
+                            _moveAssignmentsBackToWorkers(role, isDayShift ? 'Päivävuoro' : 'Yövuoro');
+                          }
+                          
+                          _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                          
+                          // INSTANT UPDATE - Update main UI immediately
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  // Row count controls
-                  const Text('Rivejä: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
-                  // Decrease button
-                  IconButton(
-                    onPressed: rows[role]! > 1 ? () {
-                      setDialogState(() {
-                        rows[role] = (rows[role]! - 1).clamp(1, 4);
-                      });
-                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
-                      
-                      // INSTANT UPDATE - Update main UI immediately
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    } : null,
-                    icon: const Icon(Icons.remove, size: 16),
-                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                    padding: EdgeInsets.zero,
-                  ),
-                  // Current count
-                  Container(
-                    width: 30,
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${rows[role]}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                      // Profession name
+                      Expanded(
+                        child: Text(
+                          _getRoleDisplayName(role),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 14, // Smaller font for compact width
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
+                      // Row count controls
+                      const Text('Rivejä: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
+                      // Decrease button
+                      IconButton(
+                        onPressed: rowCount > 1 ? () {
+                          setDialogState(() {
+                            rows[role] = (rowCount - 1).clamp(1, 4);
+                          });
+                          _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                          
+                          // INSTANT UPDATE - Update main UI immediately
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        } : null,
+                        icon: const Icon(Icons.remove, size: 16),
+                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                        padding: EdgeInsets.zero,
+                      ),
+                      // Current count
+                      Container(
+                        width: 30,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '$rowCount',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      // Increase button
+                      IconButton(
+                        onPressed: rowCount < 4 ? () {
+                          setDialogState(() {
+                            rows[role] = (rowCount + 1).clamp(1, 4);
+                          });
+                          _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
+                          
+                          // INSTANT UPDATE - Update main UI immediately
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        } : null,
+                        icon: const Icon(Icons.add, size: 16),
+                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
                   ),
-                  // Increase button
-                  IconButton(
-                    onPressed: rows[role]! < 4 ? () {
-                      setDialogState(() {
-                        rows[role] = (rows[role]! + 1).clamp(1, 4);
-                      });
-                      _saveProfessionSettings(); // SAVE GLOBAL PROFESSION SETTINGS
-                      
-                      // INSTANT UPDATE - Update main UI immediately
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    } : null,
-                    icon: const Icon(Icons.add, size: 16),
-                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                    padding: EdgeInsets.zero,
-                  ),
-                ],
-              ),
+                ),
+              );
+            } catch (e) {
+              print('🔥 ERROR building role $role: $e');
+              // Return an error card instead of crashing
+              return Card(
+                color: Colors.red[100],
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('Error loading $role: $e'),
+                ),
+              );
+            }
+          }).toList(),
+        ),
+      );
+    } catch (e) {
+      print('🔥 CRITICAL ERROR in _buildProfessionSettings: $e');
+      // Return a simple error widget instead of gray screen
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            Text('Error loading profession settings: $e'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                _forceRefreshProfessionData();
+                setDialogState(() {}); // Refresh dialog
+              },
+              child: const Text('Reset Data'),
             ),
-          );
-        }).toList(),
-      ),
-    );
+          ],
+        ),
+      );
+    }
   }
 
   // Function to move assignments back to workers when profession is hidden
