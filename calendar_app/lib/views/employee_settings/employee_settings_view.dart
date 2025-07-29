@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:calendar_app/models/employee.dart';
 import 'package:calendar_app/services/shared_data_service.dart';
+import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:uuid/uuid.dart';
 
 class EmployeeSettingsView extends StatefulWidget {
@@ -146,31 +147,24 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
+    // Use shared full name or fallback to default descriptions
+    final fullName = SharedAssignmentData.customProfessionFullNames[role];
+    if (fullName != null) return fullName;
+    
+    // Fallback for roles without custom full names
     switch (role) {
-      case EmployeeRole.tj:
-        return 'Työnjohtaja';
-      case EmployeeRole.varu1:
-        return 'Varu1';
-      case EmployeeRole.varu2:
-        return 'Varu2';
-      case EmployeeRole.varu3:
-        return 'Varu3';
-      case EmployeeRole.varu4:
-        return 'Varu4';
-      case EmployeeRole.pasta1:
-        return 'Pasta1';
-      case EmployeeRole.pasta2:
-        return 'Pasta2';
-      case EmployeeRole.ict:
-        return 'ICT';
-      case EmployeeRole.tarvike:
-        return 'Tarvike';
-      case EmployeeRole.pora:
-        return 'Pora';
-      case EmployeeRole.huolto:
-        return 'Huolto';
-      case EmployeeRole.custom:
-        return 'Custom';
+      case EmployeeRole.tj: return 'Työnjohtaja';
+      case EmployeeRole.varu1: return 'Varu1';
+      case EmployeeRole.varu2: return 'Varu2';
+      case EmployeeRole.varu3: return 'Varu3';
+      case EmployeeRole.varu4: return 'Varu4';
+      case EmployeeRole.pasta1: return 'Pasta1';
+      case EmployeeRole.pasta2: return 'Pasta2';
+      case EmployeeRole.ict: return 'ICT';
+      case EmployeeRole.tarvike: return 'Tarvike';
+      case EmployeeRole.pora: return 'Pora';
+      case EmployeeRole.huolto: return 'Huolto';
+      case EmployeeRole.custom: return 'Custom';
       case EmployeeRole.slot1:
       case EmployeeRole.slot2:
       case EmployeeRole.slot3:

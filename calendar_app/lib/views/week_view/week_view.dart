@@ -53,60 +53,10 @@ class _WeekViewState extends State<WeekView> {
   Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
   Map<int, Map<EmployeeRole, int>> get _weekNightShiftRows => SharedAssignmentData.weekNightShiftRows;
 
-  // 🔥 CUSTOM PROFESSION NAMES - Allow editing default profession display names
-  static final Map<EmployeeRole, String> _customProfessionNames = {
-    EmployeeRole.tj: 'TJ',
-    EmployeeRole.varu1: 'VARU1',
-    EmployeeRole.varu2: 'VARU2',
-    EmployeeRole.varu3: 'VARU3',
-    EmployeeRole.varu4: 'VARU4',
-    EmployeeRole.pasta1: 'PASTA1',
-    EmployeeRole.pasta2: 'PASTA2',
-    EmployeeRole.ict: 'ICT',
-    EmployeeRole.tarvike: 'TARVIKE',
-    EmployeeRole.pora: 'PORA',
-    EmployeeRole.huolto: 'HUOLTO',
-    // Default names for configurable slots
-    EmployeeRole.slot1: 'SLOT1',
-    EmployeeRole.slot2: 'SLOT2',
-    EmployeeRole.slot3: 'SLOT3',
-    EmployeeRole.slot4: 'SLOT4',
-    EmployeeRole.slot5: 'SLOT5',
-    EmployeeRole.slot6: 'SLOT6',
-    EmployeeRole.slot7: 'SLOT7',
-    EmployeeRole.slot8: 'SLOT8',
-    EmployeeRole.slot9: 'SLOT9',
-    EmployeeRole.slot10: 'SLOT10',
-  };
-
-  // Full profession names for editing dialog
-  static final Map<EmployeeRole, String> _customProfessionFullNames = {
-    EmployeeRole.tj: 'Työnjohtaja',
-    EmployeeRole.varu1: 'Varustaja 1',
-    EmployeeRole.varu2: 'Varustaja 2',
-    EmployeeRole.varu3: 'Varustaja 3',
-    EmployeeRole.varu4: 'Varustaja 4',
-    EmployeeRole.pasta1: 'Pasta 1',
-    EmployeeRole.pasta2: 'Pasta 2',
-    EmployeeRole.ict: 'ICT',
-    EmployeeRole.tarvike: 'Tarvike',
-    EmployeeRole.pora: 'Pora',
-    EmployeeRole.huolto: 'Huolto',
-    // Default full names for configurable slots
-    EmployeeRole.slot1: 'Custom Profession 1',
-    EmployeeRole.slot2: 'Custom Profession 2',
-    EmployeeRole.slot3: 'Custom Profession 3',
-    EmployeeRole.slot4: 'Custom Profession 4',
-    EmployeeRole.slot5: 'Custom Profession 5',
-    EmployeeRole.slot6: 'Custom Profession 6',
-    EmployeeRole.slot7: 'Custom Profession 7',
-    EmployeeRole.slot8: 'Custom Profession 8',
-    EmployeeRole.slot9: 'Custom Profession 9',
-    EmployeeRole.slot10: 'Custom Profession 10',
-  };
-
-  // 🔥 ACTIVE PROFESSION SLOTS - Track which configurable slots are enabled
-  static final Set<EmployeeRole> _activeProfessionSlots = <EmployeeRole>{};
+  // 🔥 USE SHARED PROFESSION DATA - All profession customization moved to SharedAssignmentData
+  Map<EmployeeRole, String> get _customProfessionNames => SharedAssignmentData.customProfessionNames;
+  Map<EmployeeRole, String> get _customProfessionFullNames => SharedAssignmentData.customProfessionFullNames;
+  Set<EmployeeRole> get _activeProfessionSlots => SharedAssignmentData.activeProfessionSlots;
   
   // Collapsible employee groups
   final Map<EmployeeCategory, bool> _collapsedGroups = {
@@ -1353,7 +1303,7 @@ class _WeekViewState extends State<WeekView> {
       final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
                               EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
       
-      final activeSlotsOnly = slotProfessions.where((slot) => _activeProfessionSlots.contains(slot)).toList();
+      final activeSlotsOnly = slotProfessions.where((slot) => SharedAssignmentData.activeProfessionSlots.contains(slot)).toList();
       final availableRoles = [...defaultProfessions, ...activeSlotsOnly];
       
       return SingleChildScrollView(
@@ -1583,14 +1533,14 @@ class _WeekViewState extends State<WeekView> {
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
-    // Use custom names if available, otherwise fallback to default
-    return _customProfessionNames[role] ?? role.name.toUpperCase();
+    // Use shared custom names
+    return SharedAssignmentData.getRoleDisplayName(role);
   }
 
   /// Edit profession names (both short and full names)
   void _editProfessionName(EmployeeRole role, StateSetter setDialogState) {
-    final shortNameController = TextEditingController(text: _customProfessionNames[role] ?? '');
-    final fullNameController = TextEditingController(text: _customProfessionFullNames[role] ?? '');
+    final shortNameController = TextEditingController(text: SharedAssignmentData.customProfessionNames[role] ?? '');
+    final fullNameController = TextEditingController(text: SharedAssignmentData.customProfessionFullNames[role] ?? '');
 
     showDialog(
       context: context,
@@ -1630,8 +1580,8 @@ class _WeekViewState extends State<WeekView> {
               
               if (shortName.isNotEmpty && fullName.isNotEmpty) {
                 setState(() {
-                  _customProfessionNames[role] = shortName;
-                  _customProfessionFullNames[role] = fullName;
+                  SharedAssignmentData.customProfessionNames[role] = shortName;
+                  SharedAssignmentData.customProfessionFullNames[role] = fullName;
                 });
                 setDialogState(() {}); // Update the profession settings dialog
                 _saveProfessionNames();
@@ -1650,15 +1600,15 @@ class _WeekViewState extends State<WeekView> {
     try {
       // Save to SharedPreferences as backup and for immediate access
       final prefs = await SharedPreferences.getInstance();
-      final shortNamesJson = _customProfessionNames.map((key, value) => MapEntry(key.name, value));
-      final fullNamesJson = _customProfessionFullNames.map((key, value) => MapEntry(key.name, value));
-      final activeSlotsJson = _activeProfessionSlots.map((slot) => slot.name).toList();
+      final shortNamesJson = SharedAssignmentData.customProfessionNames.map((key, value) => MapEntry(key.name, value));
+      final fullNamesJson = SharedAssignmentData.customProfessionFullNames.map((key, value) => MapEntry(key.name, value));
+      final activeSlotsJson = SharedAssignmentData.activeProfessionSlots.map((slot) => slot.name).toList();
       
       await prefs.setString('custom_profession_short_names', json.encode(shortNamesJson));
       await prefs.setString('custom_profession_full_names', json.encode(fullNamesJson));
       await prefs.setString('active_profession_slots', json.encode(activeSlotsJson));
       
-      print('✅ Saved custom profession names and ${_activeProfessionSlots.length} active slots locally');
+      print('✅ Saved custom profession names and ${SharedAssignmentData.activeProfessionSlots.length} active slots locally');
     } catch (e) {
       print('❌ Error saving profession names: $e');
     }
@@ -1679,7 +1629,7 @@ class _WeekViewState extends State<WeekView> {
             orElse: () => EmployeeRole.tj,
           );
           if (role != EmployeeRole.custom) {
-            _customProfessionNames[role] = entry.value;
+            SharedAssignmentData.customProfessionNames[role] = entry.value;
           }
         }
       }
@@ -1694,7 +1644,7 @@ class _WeekViewState extends State<WeekView> {
             orElse: () => EmployeeRole.tj,
           );
           if (role != EmployeeRole.custom) {
-            _customProfessionFullNames[role] = entry.value;
+            SharedAssignmentData.customProfessionFullNames[role] = entry.value;
           }
         }
       }
@@ -1703,19 +1653,19 @@ class _WeekViewState extends State<WeekView> {
       final activeSlotsJson = prefs.getString('active_profession_slots');
       if (activeSlotsJson != null) {
         final List<dynamic> slotNames = json.decode(activeSlotsJson);
-        _activeProfessionSlots.clear();
+        SharedAssignmentData.activeProfessionSlots.clear();
         for (final slotName in slotNames) {
           final role = EmployeeRole.values.firstWhere(
             (r) => r.name == slotName,
             orElse: () => EmployeeRole.tj,
           );
           if (role.name.startsWith('slot')) {
-            _activeProfessionSlots.add(role);
+            SharedAssignmentData.activeProfessionSlots.add(role);
           }
         }
       }
       
-      print('✅ Loaded custom profession names and ${_activeProfessionSlots.length} active slots');
+      print('✅ Loaded custom profession names and ${SharedAssignmentData.activeProfessionSlots.length} active slots');
     } catch (e) {
       print('❌ Error loading profession names: $e');
     }
@@ -1725,7 +1675,7 @@ class _WeekViewState extends State<WeekView> {
   bool _canAddMoreProfessions() {
     final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
                             EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
-    return _activeProfessionSlots.length < slotProfessions.length;
+    return SharedAssignmentData.activeProfessionSlots.length < slotProfessions.length;
   }
 
   /// Add a new profession slot
@@ -1735,13 +1685,13 @@ class _WeekViewState extends State<WeekView> {
     
     // Find first available slot
     final availableSlot = slotProfessions.firstWhere(
-      (slot) => !_activeProfessionSlots.contains(slot),
+      (slot) => !SharedAssignmentData.activeProfessionSlots.contains(slot),
       orElse: () => EmployeeRole.slot1,
     );
 
-    if (!_activeProfessionSlots.contains(availableSlot)) {
-      final shortNameController = TextEditingController(text: 'NEW${_activeProfessionSlots.length + 1}');
-      final fullNameController = TextEditingController(text: 'New Profession ${_activeProfessionSlots.length + 1}');
+    if (!SharedAssignmentData.activeProfessionSlots.contains(availableSlot)) {
+      final shortNameController = TextEditingController(text: 'NEW${SharedAssignmentData.activeProfessionSlots.length + 1}');
+      final fullNameController = TextEditingController(text: 'New Profession ${SharedAssignmentData.activeProfessionSlots.length + 1}');
 
       showDialog(
         context: context,
@@ -1781,9 +1731,9 @@ class _WeekViewState extends State<WeekView> {
                 
                 if (shortName.isNotEmpty && fullName.isNotEmpty) {
                   setState(() {
-                    _activeProfessionSlots.add(availableSlot);
-                    _customProfessionNames[availableSlot] = shortName;
-                    _customProfessionFullNames[availableSlot] = fullName;
+                    SharedAssignmentData.activeProfessionSlots.add(availableSlot);
+                    SharedAssignmentData.customProfessionNames[availableSlot] = shortName;
+                    SharedAssignmentData.customProfessionFullNames[availableSlot] = fullName;
                     
                     // Set default visibility and rows for the new profession in current week
                     final dayProfessions = _weekDayShiftProfessions[widget.weekNumber] ??= {};
@@ -1812,7 +1762,7 @@ class _WeekViewState extends State<WeekView> {
 
   /// Remove a profession slot
   void _removeProfession(StateSetter setDialogState) {
-    final activeSlots = _activeProfessionSlots.toList();
+    final activeSlots = SharedAssignmentData.activeProfessionSlots.toList();
     
     showDialog(
       context: context,
@@ -1824,13 +1774,13 @@ class _WeekViewState extends State<WeekView> {
             const Text('Select profession to remove:'),
             const SizedBox(height: 16),
             ...activeSlots.map((slot) => ListTile(
-              title: Text(_customProfessionNames[slot] ?? slot.name.toUpperCase()),
-              subtitle: Text(_customProfessionFullNames[slot] ?? 'Custom Profession'),
+              title: Text(SharedAssignmentData.customProfessionNames[slot] ?? slot.name.toUpperCase()),
+              subtitle: Text(SharedAssignmentData.customProfessionFullNames[slot] ?? 'Custom Profession'),
               trailing: IconButton(
                 icon: const Icon(Icons.delete, color: Colors.red),
                 onPressed: () {
                   setState(() {
-                    _activeProfessionSlots.remove(slot);
+                    SharedAssignmentData.activeProfessionSlots.remove(slot);
                     
                     // Remove assignments for this profession
                     _moveAssignmentsBackToWorkers(slot, 'Päivävuoro');
@@ -2618,43 +2568,8 @@ class _WeekViewState extends State<WeekView> {
 
   // Add compact role name function
   String _getCompactRoleName(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj:
-        return 'TJ';
-      case EmployeeRole.varu1:
-        return 'V1';
-      case EmployeeRole.varu2:
-        return 'V2';
-      case EmployeeRole.varu3:
-        return 'V3';
-      case EmployeeRole.varu4:
-        return 'V4';
-      case EmployeeRole.pasta1:
-        return 'P1';
-      case EmployeeRole.pasta2:
-        return 'P2';
-      case EmployeeRole.ict:
-        return 'ICT';
-      case EmployeeRole.tarvike:
-        return 'TR';
-      case EmployeeRole.pora:
-        return 'PR';
-      case EmployeeRole.huolto:
-        return 'HU';
-      case EmployeeRole.custom:
-        return 'CU';
-      case EmployeeRole.slot1:
-      case EmployeeRole.slot2:
-      case EmployeeRole.slot3:
-      case EmployeeRole.slot4:
-      case EmployeeRole.slot5:
-      case EmployeeRole.slot6:
-      case EmployeeRole.slot7:
-      case EmployeeRole.slot8:
-      case EmployeeRole.slot9:
-      case EmployeeRole.slot10:
-        return role.name.substring(4).toUpperCase(); // "SLOT1" -> "1"
-    }
+    // Use shared compact role name method
+    return SharedAssignmentData.getCompactRoleName(role);
   }
 
 

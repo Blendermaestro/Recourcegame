@@ -568,72 +568,13 @@ class _YearViewState extends State<YearView> {
 
   // EXACT same function as week view
   String _getCompactRoleName(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj:
-        return 'TJ';
-      case EmployeeRole.varu1:
-        return 'V1';
-      case EmployeeRole.varu2:
-        return 'V2';
-      case EmployeeRole.varu3:
-        return 'V3';
-      case EmployeeRole.varu4:
-        return 'V4';
-      case EmployeeRole.pasta1:
-        return 'P1';
-      case EmployeeRole.pasta2:
-        return 'P2';
-      case EmployeeRole.ict:
-        return 'ICT';
-      case EmployeeRole.tarvike:
-        return 'TR';
-      case EmployeeRole.pora:
-        return 'PR';
-      case EmployeeRole.huolto:
-        return 'HU';
-      case EmployeeRole.custom:
-        return 'CU';
-      case EmployeeRole.slot1:
-      case EmployeeRole.slot2:
-      case EmployeeRole.slot3:
-      case EmployeeRole.slot4:
-      case EmployeeRole.slot5:
-      case EmployeeRole.slot6:
-      case EmployeeRole.slot7:
-      case EmployeeRole.slot8:
-      case EmployeeRole.slot9:
-      case EmployeeRole.slot10:
-        // Use custom short names for slots - fallback to slot number
-        return role.name.toUpperCase();
-    }
+    // Use shared compact role name method
+    return SharedAssignmentData.getCompactRoleName(role);
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj: return 'TJ';
-      case EmployeeRole.varu1: return 'VARU1';
-      case EmployeeRole.varu2: return 'VARU2';
-      case EmployeeRole.varu3: return 'VARU3';
-      case EmployeeRole.varu4: return 'VARU4';
-      case EmployeeRole.pasta1: return 'PASTA1';
-      case EmployeeRole.pasta2: return 'PASTA2';
-      case EmployeeRole.ict: return 'ICT';
-      case EmployeeRole.tarvike: return 'TARVIKE';
-      case EmployeeRole.pora: return 'PORA';
-      case EmployeeRole.huolto: return 'HUOLTO';
-      case EmployeeRole.custom: return 'CUSTOM';
-      case EmployeeRole.slot1:
-      case EmployeeRole.slot2:
-      case EmployeeRole.slot3:
-      case EmployeeRole.slot4:
-      case EmployeeRole.slot5:
-      case EmployeeRole.slot6:
-      case EmployeeRole.slot7:
-      case EmployeeRole.slot8:
-      case EmployeeRole.slot9:
-      case EmployeeRole.slot10:
-        return role.name.toUpperCase();
-    }
+    // Use shared role display name method
+    return SharedAssignmentData.getRoleDisplayName(role);
   }
 
   // 🔥 PROFESSION-BASED STORAGE SYSTEM - NO MORE LANE MISALIGNMENT! 🔥

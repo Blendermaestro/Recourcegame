@@ -1,5 +1,6 @@
 import 'package:calendar_app/data/default_employees.dart';
 import 'package:calendar_app/models/employee.dart';
+import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:flutter/material.dart';
 
 typedef EmployeeAssignments = Map<String, Employee>;
@@ -85,31 +86,8 @@ class _ShiftSectionState extends State<ShiftSection> {
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj: return 'TJ';
-      case EmployeeRole.varu1: return 'VARU1';
-      case EmployeeRole.varu2: return 'VARU2';
-      case EmployeeRole.varu3: return 'VARU3';
-      case EmployeeRole.varu4: return 'VARU4';
-      case EmployeeRole.pasta1: return 'PASTA1';
-      case EmployeeRole.pasta2: return 'PASTA2';
-      case EmployeeRole.ict: return 'ICT';
-      case EmployeeRole.tarvike: return 'TARVIKE';
-      case EmployeeRole.pora: return 'PORA';
-      case EmployeeRole.huolto: return 'HUOLTO';
-      case EmployeeRole.custom: return 'CUSTOM';
-      case EmployeeRole.slot1:
-      case EmployeeRole.slot2:
-      case EmployeeRole.slot3:
-      case EmployeeRole.slot4:
-      case EmployeeRole.slot5:
-      case EmployeeRole.slot6:
-      case EmployeeRole.slot7:
-      case EmployeeRole.slot8:
-      case EmployeeRole.slot9:
-      case EmployeeRole.slot10:
-        return role.name.toUpperCase();
-    }
+    // Use shared role display name method
+    return SharedAssignmentData.getRoleDisplayName(role);
   }
 
   Color _getCategoryColor(EmployeeRole role) {
