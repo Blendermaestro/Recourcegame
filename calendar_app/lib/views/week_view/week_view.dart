@@ -52,6 +52,36 @@ class _WeekViewState extends State<WeekView> {
   Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
   Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
   Map<int, Map<EmployeeRole, int>> get _weekNightShiftRows => SharedAssignmentData.weekNightShiftRows;
+
+  // 🔥 CUSTOM PROFESSION NAMES - Allow editing default profession display names
+  static final Map<EmployeeRole, String> _customProfessionNames = {
+    EmployeeRole.tj: 'TJ',
+    EmployeeRole.varu1: 'VARU1',
+    EmployeeRole.varu2: 'VARU2',
+    EmployeeRole.varu3: 'VARU3',
+    EmployeeRole.varu4: 'VARU4',
+    EmployeeRole.pasta1: 'PASTA1',
+    EmployeeRole.pasta2: 'PASTA2',
+    EmployeeRole.ict: 'ICT',
+    EmployeeRole.tarvike: 'TARVIKE',
+    EmployeeRole.pora: 'PORA',
+    EmployeeRole.huolto: 'HUOLTO',
+  };
+
+  // Full profession names for editing dialog
+  static final Map<EmployeeRole, String> _customProfessionFullNames = {
+    EmployeeRole.tj: 'Työnjohtaja',
+    EmployeeRole.varu1: 'Varustaja 1',
+    EmployeeRole.varu2: 'Varustaja 2',
+    EmployeeRole.varu3: 'Varustaja 3',
+    EmployeeRole.varu4: 'Varustaja 4',
+    EmployeeRole.pasta1: 'Pasta 1',
+    EmployeeRole.pasta2: 'Pasta 2',
+    EmployeeRole.ict: 'ICT',
+    EmployeeRole.tarvike: 'Tarvike',
+    EmployeeRole.pora: 'Pora',
+    EmployeeRole.huolto: 'Huolto',
+  };
   
   // Collapsible employee groups
   final Map<EmployeeCategory, bool> _collapsedGroups = {
@@ -98,6 +128,7 @@ class _WeekViewState extends State<WeekView> {
     
     _clearOldDataOnFirstRun(); // Clear old data during migration
     _loadCustomProfessions(); // Load custom professions first
+    _loadProfessionNames(); // Load custom profession names
     _loadEmployees();
     _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
@@ -1289,10 +1320,13 @@ class _WeekViewState extends State<WeekView> {
       // 🔥 DEBUG: Log profession data to help debug gray screen
       print('🔧 PROFESSION DIALOG: isDayShift=$isDayShift, professions.length=${professions.length}, rows.length=${rows.length}');
       
+      // 🔥 EXCLUDE CUSTOM from the UI as requested by user
+      final availableRoles = EmployeeRole.values.where((role) => role != EmployeeRole.custom).toList();
+      
       return SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: EmployeeRole.values.map((role) {
+          children: availableRoles.map((role) {
             try {
               // 🔥 NULL SAFETY: Ensure values exist with proper defaults
               final isVisible = professions[role] ?? false;
@@ -1331,16 +1365,33 @@ class _WeekViewState extends State<WeekView> {
                           }
                         },
                       ),
-                      // Profession name
+                      // Profession name with edit functionality
                       Expanded(
-                        child: Text(
-                          _getRoleDisplayName(role),
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 14, // Smaller font for compact width
-                            fontWeight: FontWeight.w600,
+                        child: GestureDetector(
+                          onTap: () => _editProfessionName(role, setDialogState),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _getRoleDisplayName(role),
+                                  style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 14, // Smaller font for compact width
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.edit,
+                                size: 16,
+                                color: Colors.blue,
+                              ),
+                            ],
                           ),
-                          textAlign: TextAlign.center,
                         ),
                       ),
                       // Row count controls
@@ -1467,19 +1518,123 @@ class _WeekViewState extends State<WeekView> {
   }
 
   String _getRoleDisplayName(EmployeeRole role) {
-    switch (role) {
-      case EmployeeRole.tj: return 'TJ';
-      case EmployeeRole.varu1: return 'VARU1';
-      case EmployeeRole.varu2: return 'VARU2';
-      case EmployeeRole.varu3: return 'VARU3';
-      case EmployeeRole.varu4: return 'VARU4';
-      case EmployeeRole.pasta1: return 'PASTA1';
-      case EmployeeRole.pasta2: return 'PASTA2';
-      case EmployeeRole.ict: return 'ICT';
-      case EmployeeRole.tarvike: return 'TARVIKE';
-      case EmployeeRole.pora: return 'PORA';
-      case EmployeeRole.huolto: return 'HUOLTO';
-      case EmployeeRole.custom: return 'CUSTOM';
+    // Use custom names if available, otherwise fallback to default
+    return _customProfessionNames[role] ?? role.name.toUpperCase();
+  }
+
+  /// Edit profession names (both short and full names)
+  void _editProfessionName(EmployeeRole role, StateSetter setDialogState) {
+    final shortNameController = TextEditingController(text: _customProfessionNames[role] ?? '');
+    final fullNameController = TextEditingController(text: _customProfessionFullNames[role] ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Profession: ${role.name.toUpperCase()}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: shortNameController,
+              decoration: const InputDecoration(
+                labelText: 'Short Name (displayed in calendar)',
+                hintText: 'e.g., TJ, ICT, VARU1',
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: fullNameController,
+              decoration: const InputDecoration(
+                labelText: 'Full Name (displayed in settings)',
+                hintText: 'e.g., Työnjohtaja, ICT-vastaava',
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final shortName = shortNameController.text.trim().toUpperCase();
+              final fullName = fullNameController.text.trim();
+              
+              if (shortName.isNotEmpty && fullName.isNotEmpty) {
+                setState(() {
+                  _customProfessionNames[role] = shortName;
+                  _customProfessionFullNames[role] = fullName;
+                });
+                setDialogState(() {}); // Update the profession settings dialog
+                _saveProfessionNames();
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Save custom profession names to cloud storage
+  Future<void> _saveProfessionNames() async {
+    try {
+      // Save to SharedPreferences as backup and for immediate access
+      final prefs = await SharedPreferences.getInstance();
+      final shortNamesJson = _customProfessionNames.map((key, value) => MapEntry(key.name, value));
+      final fullNamesJson = _customProfessionFullNames.map((key, value) => MapEntry(key.name, value));
+      
+      await prefs.setString('custom_profession_short_names', json.encode(shortNamesJson));
+      await prefs.setString('custom_profession_full_names', json.encode(fullNamesJson));
+      
+      print('✅ Saved custom profession names locally');
+    } catch (e) {
+      print('❌ Error saving profession names: $e');
+    }
+  }
+
+  /// Load custom profession names from storage
+  Future<void> _loadProfessionNames() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load short names
+      final shortNamesJson = prefs.getString('custom_profession_short_names');
+      if (shortNamesJson != null) {
+        final Map<String, dynamic> shortNamesMap = json.decode(shortNamesJson);
+        for (final entry in shortNamesMap.entries) {
+          final role = EmployeeRole.values.firstWhere(
+            (r) => r.name == entry.key,
+            orElse: () => EmployeeRole.tj,
+          );
+          if (role != EmployeeRole.custom) {
+            _customProfessionNames[role] = entry.value;
+          }
+        }
+      }
+      
+      // Load full names
+      final fullNamesJson = prefs.getString('custom_profession_full_names');
+      if (fullNamesJson != null) {
+        final Map<String, dynamic> fullNamesMap = json.decode(fullNamesJson);
+        for (final entry in fullNamesMap.entries) {
+          final role = EmployeeRole.values.firstWhere(
+            (r) => r.name == entry.key,
+            orElse: () => EmployeeRole.tj,
+          );
+          if (role != EmployeeRole.custom) {
+            _customProfessionFullNames[role] = entry.value;
+          }
+        }
+      }
+      
+      print('✅ Loaded custom profession names');
+    } catch (e) {
+      print('❌ Error loading profession names: $e');
     }
   }
 
@@ -3493,17 +3648,17 @@ class _WeekViewState extends State<WeekView> {
     final keysToRemove = <String>[];
     
     for (final day in days) {
-      // 🔥 CRITICAL FIX: Remove ANY assignment of the same employee on this day (across ALL professions)
+      // 🔥 CRITICAL FIX: Remove ANY assignment of the same employee on this day (across ALL professions AND ALL SHIFTS)
       if (excludeEmployeeId != null) {
-        // Find ALL assignments for this employee on this day in this shift
+        // Find ALL assignments for this employee on this day across BOTH day and night shifts
         final conflictingKeys = _assignments.entries
             .where((entry) {
               final parsed = _parseAssignmentKey(entry.key);
               return parsed != null &&
                      parsed['weekNumber'] == widget.weekNumber &&
-                     parsed['shiftTitle'] == shiftTitle &&
                      parsed['day'] == day &&
                      entry.value.id == excludeEmployeeId;
+              // 🔥 REMOVED shiftTitle filter - now checks BOTH day and night shifts
             })
             .map((e) => e.key)
             .toList();
@@ -3513,16 +3668,17 @@ class _WeekViewState extends State<WeekView> {
           if (parsed != null) {
             final conflictProfession = parsed['profession'] as EmployeeRole;
             final conflictRow = parsed['professionRow'] as int;
+            final conflictShift = parsed['shiftTitle'] as String;
             final currentRowKey = '${profession.name}|$professionRow';
             final conflictRowKey = '${conflictProfession.name}|$conflictRow';
             
             // Don't remove from the same specific row being edited
-            if (excludeSpecificRow != null && conflictRowKey == excludeSpecificRow) {
+            if (excludeSpecificRow != null && conflictRowKey == excludeSpecificRow && conflictShift == shiftTitle) {
               continue;
             }
             
             keysToRemove.add(conflictKey);
-            print('🔥 SAME PERSON CONFLICT: Removing ${excludeEmployeeId} from $shiftTitle day $day, ${conflictProfession.name} row $conflictRow (can\'t work multiple professions same day)');
+            print('🔥 CROSS-SHIFT CONFLICT: Removing ${excludeEmployeeId} from $conflictShift day $day, ${conflictProfession.name} row $conflictRow (can\'t work multiple shifts/professions same day)');
           }
         }
       }
