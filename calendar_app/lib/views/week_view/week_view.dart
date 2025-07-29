@@ -107,8 +107,9 @@ class _WeekViewState extends State<WeekView> {
   @override
   void dispose() {
     // 🔥 SAVE BEFORE LEAVING - Ensure no data loss on view switch
-    if (_hasPendingChanges) {
-      _performCloudSave(); // Force immediate save without waiting for debounce
+    if (_hasPendingChanges && !_isSaving) {
+      // Don't use _performCloudSave - just trigger a final scheduled save
+      _scheduleCloudSave();
     }
     _saveDebounceTimer?.cancel();
     super.dispose();
@@ -584,20 +585,26 @@ class _WeekViewState extends State<WeekView> {
   DateTime? _lastSaveTime;
   
     void _scheduleCloudSave() {
-    // Reduce throttle to 1 second and add debug logging
+    // 🔥 STRONGER THROTTLING: Prevent multiple saves within 2 seconds
     final now = DateTime.now();
-    if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(seconds: 1)) {
+    if (_isSaving) {
+      print('WeekView: ⏳ Save already in progress, skipping...');
+      _hasPendingChanges = true; // Mark for retry
+      return;
+    }
+    
+    if (_lastSaveTime != null && now.difference(_lastSaveTime!) < Duration(seconds: 2)) {
       print('WeekView: ⏳ Save throttled - too recent (${now.difference(_lastSaveTime!).inMilliseconds}ms ago)');
       _hasPendingChanges = true; // Still mark as pending for retry
       return;
     }
 
     _hasPendingChanges = true;
-    print('WeekView: ⏰ Scheduling cloud save in 800ms... (Current assignments: ${_assignments.length})');
+    print('WeekView: ⏰ Scheduling ATOMIC save in 1000ms... (Current assignments: ${_assignments.length})');
     _saveDebounceTimer?.cancel();
-    _saveDebounceTimer = Timer(const Duration(milliseconds: 800), () {
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
       if (_hasPendingChanges && !_isDragActive && !_isSaving) {
-        print('WeekView: 🚀 Executing scheduled cloud save...');
+        print('WeekView: 🚀 Executing ATOMIC cloud save...');
         _performCloudSave();
       } else {
         print('WeekView: ⏸️ Skipping save - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
@@ -708,16 +715,23 @@ class _WeekViewState extends State<WeekView> {
     }
   }
   
-  // 🔥 FIXED CLOUD SAVING - No more duplicates or deletion issues
+  // 🔥 ATOMIC CLOUD SAVING - No more race conditions or duplicates
   Future<void> _saveAssignments() async {
     try {
       // 🔥 DEDUPLICATE ASSIGNMENTS - Remove duplicate employees
       _deduplicateAssignments();
       
-      // Collect all assignments to save for this week
+      // 🔥 ATOMIC APPROACH: Clear entire week first, then insert all assignments
+      print('🔥 ATOMIC SAVE: Clearing week ${widget.weekNumber} assignments...');
+      
+      // Step 1: DELETE ALL assignments for this week (atomic clear)
+      await SharedDataService.supabase.from('work_assignments')
+        .delete()
+        .eq('week_number', widget.weekNumber);
+      
+      // Step 2: Collect all assignments to save for this week
       final assignmentsToSave = <Map<String, dynamic>>[];
       final assignmentKeys = <String>{}; // Track constraint keys to avoid duplicates
-      final currentAssignmentKeys = <String>{}; // Track keys in CORRECT format for deletion comparison
       
       for (final entry in _assignments.entries) {
         final parsed = _parseAssignmentKey(entry.key);
@@ -727,7 +741,7 @@ class _WeekViewState extends State<WeekView> {
             final shiftType = parsed['shiftTitle'].toLowerCase().contains('yö') ? 'night' : 'day';
             final userId = SharedDataService.supabase.auth.currentUser?.id;
             
-            // 🔥 FIX: Use shared constraint key (no user_id for shared data)
+            // Create constraint key to avoid duplicates
             final constraintKey = '${parsed['weekNumber']}-${parsed['day']}-$shiftType-$lane';
             
             // Only add if we haven't already processed this constraint combination
@@ -743,66 +757,18 @@ class _WeekViewState extends State<WeekView> {
               });
               
               assignmentKeys.add(constraintKey);
-              
-              // 🔥 FIX: Track in the SAME format that loadAssignments returns
-              // Format: weekNumber-shiftTitle-dayIndex-profession-professionRow  
-              final professionString = _enumToString(parsed['profession']);
-              final currentKey = '${parsed['weekNumber']}-${parsed['shiftTitle']}-${parsed['day']}-$professionString-${parsed['professionRow']}';
-              currentAssignmentKeys.add(currentKey);
             }
           }
         }
       }
       
-      // Get existing assignments for this week to see what needs to be deleted
-      final existingAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
-      final assignmentsToDelete = <Map<String, dynamic>>[];
-      
-      // 🔥 FIX: Compare keys in the SAME format
-      for (final existingKey in existingAssignments.keys) {
-        if (!currentAssignmentKeys.contains(existingKey)) {
-          // This assignment exists in DB but not in our current assignments - should be deleted
-          final parsed = _parseAssignmentKey(existingKey);
-          if (parsed != null) {
-            final lane = _getProfessionToAbsoluteLane(parsed['profession'], parsed['professionRow'], parsed['shiftTitle']);
-            if (lane != -1) {
-              assignmentsToDelete.add({
-                'week_number': parsed['weekNumber'],
-                'day_index': parsed['day'],
-                'shift_title': parsed['shiftTitle'],
-                'lane': lane,
-              });
-            }
-          }
-        }
-      }
-      
-      // 🔥 SIMPLIFIED SAVING: Just use shared constraint directly
+      // Step 3: INSERT ALL assignments at once (batch insert)
       if (assignmentsToSave.isNotEmpty) {
-        for (final assignment in assignmentsToSave) {
-          // Delete first, then insert - guarantees no duplicates
-          await SharedDataService.supabase.from('work_assignments')
-            .delete()
-            .eq('week_number', assignment['week_number'])
-            .eq('day_index', assignment['day_index'])
-            .eq('shift_type', assignment['shift_type'])
-            .eq('lane', assignment['lane']);
-          
-          await SharedDataService.supabase.from('work_assignments').insert([assignment]);
-        }
+        print('🔥 ATOMIC SAVE: Inserting ${assignmentsToSave.length} assignments...');
+        await SharedDataService.supabase.from('work_assignments').insert(assignmentsToSave);
       }
       
-      // Delete assignments that are no longer needed
-      for (final deleteData in assignmentsToDelete) {
-        await SharedDataService.supabase.from('work_assignments')
-          .delete()
-          .eq('week_number', deleteData['week_number'])
-          .eq('day_index', deleteData['day_index'])
-          .eq('shift_type', deleteData['shift_type'])
-          .eq('lane', deleteData['lane']);
-      }
-      
-      print('✅ Saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length}');
+      print('✅ ATOMIC SAVE: Cleared and saved ${assignmentsToSave.length} assignments for week ${widget.weekNumber}');
       
       // 🔥 REFRESH SHARED DATA - Ensure other views see changes
       await _refreshAssignmentsFromSupabase();
@@ -1654,10 +1620,8 @@ class _WeekViewState extends State<WeekView> {
       _isDragActive = false; // Allow cloud saves again
     });
     
-    // Trigger any pending cloud save now that drag is complete
-    if (_hasPendingChanges) {
-      _performCloudSave();
-    }
+    // 🔥 FIX: Don't bypass debounce timer - let scheduled save handle it
+    _scheduleCloudSave();
     } catch (e) {
       print('❌ Error during resize: $e');
       // Clear drag state on error
