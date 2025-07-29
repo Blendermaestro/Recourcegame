@@ -558,7 +558,9 @@ class _WeekViewState extends State<WeekView> {
       if (visibleProfession == profession) {
         final maxRows = isDay ? _dayShiftRows[profession] ?? 1 : _nightShiftRows[profession] ?? 1;
         if (professionRow >= 0 && professionRow < maxRows) {
-          return currentLane + professionRow;
+          final finalLane = currentLane + professionRow;
+          print('🔥 LANE CALC: ${profession.name}:$professionRow -> lane $finalLane (shift: $shiftTitle)');
+          return finalLane;
         }
         return -1; // Invalid row
       }
@@ -567,6 +569,7 @@ class _WeekViewState extends State<WeekView> {
       currentLane += rows;
     }
     
+    print('🔥 LANE CALC: ${profession.name}:$professionRow -> INVALID (shift: $shiftTitle)');
     return -1; // Profession not visible
   }
   
@@ -2377,7 +2380,7 @@ class _WeekViewState extends State<WeekView> {
           ],
         ),
         // Assignment blocks for both shifts
-        ..._buildAllAssignmentBlocks(shiftTitles, dayWidth, rowHeight, dayShiftRows),
+                    // 🔥 REMOVED: Old single-day rendering that conflicts with proper multi-day blocks
       ],
     );
   }
