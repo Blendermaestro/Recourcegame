@@ -326,13 +326,8 @@ class _WeekViewState extends State<WeekView> {
     }
     
     if (daysToAllocate.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${employee.name} on jo sijoitettu kaikkiin mahdollisiin päiviin tälle viikolle'),
-          backgroundColor: const Color(0xFF5C6B73),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // 🔥 REMOVED SPAM: No more annoying notifications
+      print('WeekView: ${employee.name} already assigned to all possible days this week');
       return;
     }
     
@@ -352,6 +347,7 @@ class _WeekViewState extends State<WeekView> {
         professionRow: professionRow,
         days: daysToAllocate,
         excludeEmployeeId: employee.id, // Don't remove this employee's own assignments
+        excludeSpecificRow: '${profession.name}|$professionRow', // Don't remove from this specific row
       );
       
       // Add assignments for all days we need to allocate
@@ -383,13 +379,8 @@ class _WeekViewState extends State<WeekView> {
           : '${daysToAllocate.length} päivään (muut jo varattu)';
     }
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✓ ${employee.name} sijoitettu $allocatedDaysText. Pitkä painallus = muokkaa kokoa.'),
-        backgroundColor: const Color(0xFF9DB4C0),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    // 🔥 REMOVED SPAM: No more success notifications - work in silence
+    print('WeekView: ✓ ${employee.name} assigned to ${daysToAllocate.length} days');
   }
 
   void _handleResize(Employee employee, String shiftTitle, int startDay, int duration, EmployeeRole profession, int professionRow) {
@@ -429,6 +420,7 @@ class _WeekViewState extends State<WeekView> {
           professionRow: professionRow,
           days: targetDays,
           excludeEmployeeId: employee.id, // Don't remove this employee's assignments
+          excludeSpecificRow: '${profession.name}|$professionRow', // Don't remove from this specific row being resized
         );
         
         // THIRD: Add new resized block
@@ -1499,6 +1491,22 @@ class _WeekViewState extends State<WeekView> {
     final profession = professionInfo['profession'] as EmployeeRole;
     final professionRow = professionInfo['professionRow'] as int;
     final blockKey = _generateBlockKey(employee, shiftTitle, profession, professionRow);
+    
+    // 🔥 DEBUG: Log all instances of this employee to help diagnose multi-row issues
+    final allEmployeeKeys = _assignments.entries
+        .where((entry) => entry.value.id == employee.id && 
+                         _parseAssignmentKey(entry.key)?['shiftTitle'] == shiftTitle)
+        .map((entry) => entry.key)
+        .toList();
+    print('🔧 RESIZE: Employee ${employee.name} has ${allEmployeeKeys.length} assignment(s) in $shiftTitle');
+    for (final key in allEmployeeKeys) {
+      final parsed = _parseAssignmentKey(key);
+      if (parsed != null) {
+        final keyBlockKey = _generateBlockKey(employee, shiftTitle, parsed['profession'], parsed['professionRow']);
+        print('🔧   Assignment: ${parsed['profession']}.${parsed['professionRow']} day ${parsed['day']} -> blockKey: $keyBlockKey');
+      }
+    }
+    print('🔧 RESIZE: Toggling blockKey: $blockKey');
     
     setState(() {
       // 🔥 FIX: Clear ALL resize modes and drag states to ensure only ONE block is editable
@@ -2708,16 +2716,8 @@ class _WeekViewState extends State<WeekView> {
                           // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
                           _scheduleCloudSave();
                           
-                          // Show feedback for restored assignment
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('↶ ${originalEmployee.name} palautettu alkuperäiseen paikkaan'),
-                                backgroundColor: const Color(0xFF5C6B73),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
+                          // 🔥 REMOVED SPAM: Silent restoration
+                          print('WeekView: ↶ ${originalEmployee.name} restored to original position');
                         }
                       }
                       _dragOriginalAssignment = null;
@@ -3470,18 +3470,33 @@ class _WeekViewState extends State<WeekView> {
     required int professionRow,
     required List<int> days,
     String? excludeEmployeeId, // Don't remove assignments from this employee
+    String? excludeSpecificRow, // For same employee: don't remove from this specific row
   }) {
     final keysToRemove = <String>[];
     
     for (final day in days) {
       final slotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
       
-      // Remove existing assignment if it exists and isn't from the excluded employee
+      // Remove existing assignment if it exists
       if (_assignments.containsKey(slotKey)) {
         final existingEmployee = _assignments[slotKey];
-        if (excludeEmployeeId == null || existingEmployee?.id != excludeEmployeeId) {
+        
+        // 🔥 SAME EMPLOYEE DIFFERENT ROWS: Allow removal if it's a different row
+        bool shouldRemove = true;
+        
+        if (excludeEmployeeId != null && existingEmployee?.id == excludeEmployeeId) {
+          // Same employee - check if it's the same specific row/profession combo
+          final currentRowKey = '${profession.name}|$professionRow';
+          if (excludeSpecificRow == currentRowKey) {
+            shouldRemove = false; // Don't remove from the same specific row being edited
+          }
+          // For different rows of same employee: shouldRemove stays true
+        }
+        
+        if (shouldRemove) {
           keysToRemove.add(slotKey);
-          print('🔥 OVERLAP: Removing ${existingEmployee?.name} from $shiftTitle day $day, ${profession.name} row $professionRow');
+          final rowInfo = excludeEmployeeId == existingEmployee?.id ? ' (different row)' : '';
+          print('🔥 OVERLAP: Removing ${existingEmployee?.name} from $shiftTitle day $day, ${profession.name} row $professionRow$rowInfo');
         }
       }
     }
