@@ -3035,25 +3035,27 @@ class _WeekViewState extends State<WeekView> {
                   children: [
                     SizedBox(
                       width: 32, // Reduced from 44
-                  child: IconButton(
-                        icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
-                    onPressed: _showProfessionEditDialog,
-                    onLongPress: () {
-                      // 🔧 DEBUG: Long press to force refresh profession data
-                      print('🔧 Long press detected - forcing profession data refresh');
-                      _forceRefreshProfessionData();
-                    },
-                    padding: EdgeInsets.zero,
-                  ),
+                      child: GestureDetector(
+                        onLongPress: () {
+                          // 🔧 DEBUG: Long press to force refresh profession data
+                          print('🔧 Long press detected - forcing profession data refresh');
+                          _forceRefreshProfessionData();
+                        },
+                        child: IconButton(
+                          icon: const Icon(Icons.settings, size: 12, color: Colors.black87), // Smaller icon
+                          onPressed: _showProfessionEditDialog,
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: _buildDayHeaders(dates),
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Row(
-                    children: _buildDayHeaders(dates),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
           
               // Calendar section with dynamic height - no top margin
               Container(
