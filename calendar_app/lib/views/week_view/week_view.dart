@@ -3493,28 +3493,49 @@ class _WeekViewState extends State<WeekView> {
     final keysToRemove = <String>[];
     
     for (final day in days) {
-      final slotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+      // 🔥 CRITICAL FIX: Remove ANY assignment of the same employee on this day (across ALL professions)
+      if (excludeEmployeeId != null) {
+        // Find ALL assignments for this employee on this day in this shift
+        final conflictingKeys = _assignments.entries
+            .where((entry) {
+              final parsed = _parseAssignmentKey(entry.key);
+              return parsed != null &&
+                     parsed['weekNumber'] == widget.weekNumber &&
+                     parsed['shiftTitle'] == shiftTitle &&
+                     parsed['day'] == day &&
+                     entry.value.id == excludeEmployeeId;
+            })
+            .map((e) => e.key)
+            .toList();
+        
+        for (final conflictKey in conflictingKeys) {
+          final parsed = _parseAssignmentKey(conflictKey);
+          if (parsed != null) {
+            final conflictProfession = parsed['profession'] as EmployeeRole;
+            final conflictRow = parsed['professionRow'] as int;
+            final currentRowKey = '${profession.name}|$professionRow';
+            final conflictRowKey = '${conflictProfession.name}|$conflictRow';
+            
+            // Don't remove from the same specific row being edited
+            if (excludeSpecificRow != null && conflictRowKey == excludeSpecificRow) {
+              continue;
+            }
+            
+            keysToRemove.add(conflictKey);
+            print('🔥 SAME PERSON CONFLICT: Removing ${excludeEmployeeId} from $shiftTitle day $day, ${conflictProfession.name} row $conflictRow (can\'t work multiple professions same day)');
+          }
+        }
+      }
       
-      // Remove existing assignment if it exists
+      // Also remove the specific slot we're targeting (for other employees)
+      final slotKey = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
       if (_assignments.containsKey(slotKey)) {
         final existingEmployee = _assignments[slotKey];
         
-        // 🔥 SAME EMPLOYEE DIFFERENT ROWS: Allow removal if it's a different row
-        bool shouldRemove = true;
-        
-        if (excludeEmployeeId != null && existingEmployee?.id == excludeEmployeeId) {
-          // Same employee - check if it's the same specific row/profession combo
-          final currentRowKey = '${profession.name}|$professionRow';
-          if (excludeSpecificRow == currentRowKey) {
-            shouldRemove = false; // Don't remove from the same specific row being edited
-          }
-          // For different rows of same employee: shouldRemove stays true
-        }
-        
-        if (shouldRemove) {
+        // Only remove if it's a different employee (same employee conflicts handled above)
+        if (excludeEmployeeId == null || existingEmployee?.id != excludeEmployeeId) {
           keysToRemove.add(slotKey);
-          final rowInfo = excludeEmployeeId == existingEmployee?.id ? ' (different row)' : '';
-          print('🔥 OVERLAP: Removing ${existingEmployee?.name} from $shiftTitle day $day, ${profession.name} row $professionRow$rowInfo');
+          print('🔥 SLOT CONFLICT: Removing ${existingEmployee?.name} from $shiftTitle day $day, ${profession.name} row $professionRow (slot needed)');
         }
       }
     }
@@ -3525,7 +3546,7 @@ class _WeekViewState extends State<WeekView> {
     }
     
     if (keysToRemove.isNotEmpty) {
-      print('🔥 OVERLAP: Removed ${keysToRemove.length} overlapping assignments');
+      print('🔥 OVERLAP: Removed ${keysToRemove.length} conflicting assignments');
     }
   }
 
