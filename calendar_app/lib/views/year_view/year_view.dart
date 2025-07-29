@@ -36,6 +36,7 @@ class YearView extends StatefulWidget {
 class _YearViewState extends State<YearView> {
   late PageController _pageController;
   int _currentWeek = 1;
+  int _selectedYear = 2025; // Default year, can be changed
   UserTier _userTier = UserTier.tier1;
   
   // 🔥 SHARED DATA - Use truly shared data class
@@ -55,6 +56,7 @@ class _YearViewState extends State<YearView> {
     SharedAssignmentData.addListener(_onAssignmentDataChanged);
     
     _loadUserTier(); // Load user tier for permissions
+    _loadSelectedYear(); // Load saved year selection
     _loadCustomProfessions(); // Load custom professions first
     _loadEmployees();
     // Note: YearView is read-only, assignments loaded via SharedAssignmentData listener
@@ -94,6 +96,93 @@ class _YearViewState extends State<YearView> {
       }
     } catch (e) {
       print('Error loading user tier: $e');
+    }
+  }
+
+  Future<void> _loadSelectedYear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedYear = prefs.getInt('selected_year');
+      if (savedYear != null && mounted) {
+        setState(() {
+          _selectedYear = savedYear;
+        });
+      }
+    } catch (e) {
+      print('Error loading selected year: $e');
+    }
+  }
+
+  Future<void> _saveSelectedYear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('selected_year', _selectedYear);
+    } catch (e) {
+      print('Error saving selected year: $e');
+    }
+  }
+
+  void _showYearPicker() {
+    const currentYear = 2025;
+    const startYear = 2020;
+    const endYear = 2035; // 15 years range
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Year'),
+        content: Container(
+          width: 300,
+          height: 400,
+          child: ListView.builder(
+            itemCount: endYear - startYear + 1,
+            itemBuilder: (context, index) {
+              final year = startYear + index;
+              final isSelected = year == _selectedYear;
+              final isCurrent = year == currentYear;
+              
+              return ListTile(
+                title: Text(
+                  year.toString(),
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isCurrent ? Colors.blue : null,
+                  ),
+                ),
+                trailing: isSelected ? const Icon(Icons.check, color: Colors.blue) : null,
+                selected: isSelected,
+                onTap: () {
+                  setState(() {
+                    _selectedYear = year;
+                  });
+                  _saveSelectedYear();
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToWeek(int weekNumber) {
+    if (weekNumber >= 1 && weekNumber <= 52) {
+      setState(() {
+        _currentWeek = weekNumber;
+      });
+      _pageController.animateToPage(
+        weekNumber - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      widget.onWeekChanged?.call(weekNumber);
     }
   }
 
@@ -283,8 +372,7 @@ class _YearViewState extends State<YearView> {
   }
 
   List<DateTime> _getDatesForWeek(int weekNumber) {
-    final year = 2025;
-    final jan4 = DateTime(year, 1, 4);
+    final jan4 = DateTime(_selectedYear, 1, 4);
     final firstMonday = jan4.subtract(Duration(days: jan4.weekday - 1));
     final weekStart = firstMonday.add(Duration(days: (weekNumber - 1) * 7));
     final tuesdayStart = weekStart.add(const Duration(days: 1));
@@ -748,15 +836,42 @@ class _YearViewState extends State<YearView> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => widget.onViewChanged?.call('VIIKKO'),
+                    onPressed: () => widget.onViewChanged?.call('EDIT'),
                     icon: const Icon(Icons.arrow_back, size: 16, color: Colors.white), // Smaller icon
                     padding: EdgeInsets.zero,
-                    tooltip: 'Back to Week View',
+                    tooltip: 'Back to Edit Mode',
                   ),
                   const SizedBox(width: 8), // Reduced spacing
+                  // Year selector button
+                  GestureDetector(
+                    onTap: _showYearPicker,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[600],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$_selectedYear',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                       child: Text(
-                      '2025 - VIIKKO $_currentWeek', // New format
+                      'DISPLAY MODE - WEEK $_currentWeek',
                         style: const TextStyle(
                         fontSize: 14, // Reduced from 18
                         fontWeight: FontWeight.bold,
@@ -838,22 +953,37 @@ class _YearViewState extends State<YearView> {
             Expanded(
               child: Container(
                 color: const Color(0xFFE0FBFC),
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    final newWeek = index + 1;
-                    setState(() {
-                      _currentWeek = newWeek;
-                    });
-                    widget.onWeekChanged?.call(_currentWeek);
-                    HapticFeedback.lightImpact();
-
+                child: Focus(
+                  autofocus: true,
+                  onKey: (node, event) {
+                    if (event is RawKeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        _navigateToWeek(_currentWeek - 1);
+                        return KeyEventResult.handled;
+                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        _navigateToWeek(_currentWeek + 1);
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
                   },
-                  itemCount: 52,
-                  itemBuilder: (context, index) {
-                    final weekNumber = index + 1;
-                    return _buildWeekPage(weekNumber);
-                  },
+                  child: PageView.builder(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(), // Better for PC scrolling
+                    onPageChanged: (index) {
+                      final newWeek = index + 1;
+                      setState(() {
+                        _currentWeek = newWeek;
+                      });
+                      widget.onWeekChanged?.call(_currentWeek);
+                      HapticFeedback.lightImpact();
+                    },
+                    itemCount: 52,
+                    itemBuilder: (context, index) {
+                      final weekNumber = index + 1;
+                      return _buildWeekPage(weekNumber);
+                    },
+                  ),
                 ),
               ),
             ),

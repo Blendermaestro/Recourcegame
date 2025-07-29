@@ -86,7 +86,7 @@ class MainNavigationView extends StatefulWidget {
 }
 
 class _MainNavigationViewState extends State<MainNavigationView> {
-  String _currentView = 'VIIKKO';
+  String _currentView = 'EDIT';
   int _currentWeek = 1;
   UserTier _userTier = UserTier.tier1;
   bool _isLoading = true;
@@ -115,9 +115,9 @@ class _MainNavigationViewState extends State<MainNavigationView> {
         _userTier = tier;
         _isLoading = false;
         
-        // If user is Tier 2, force them to year view
+        // If user is Tier 2, force them to display mode
         if (tier == UserTier.tier2) {
-          _currentView = 'VUOSI';
+          _currentView = 'DISPLAY';
         }
       });
     } catch (e) {
@@ -129,11 +129,11 @@ class _MainNavigationViewState extends State<MainNavigationView> {
   }
 
   void _handleViewChange(String newView) {
-    // Prevent Tier 2 users from accessing week view
-    if (_userTier == UserTier.tier2 && newView == 'VIIKKO') {
+    // Prevent Tier 2 users from accessing edit mode
+    if (_userTier == UserTier.tier2 && newView == 'EDIT') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Access denied: Tier 2 users can only access the yearly view'),
+          content: Text('Access denied: Tier 2 users can only access the display mode'),
           backgroundColor: Colors.red,
         ),
       );
@@ -144,8 +144,8 @@ class _MainNavigationViewState extends State<MainNavigationView> {
       _currentView = newView;
     });
     
-    // 🔥 FORCE YEAR VIEW REFRESH - Ensure it shows current data when switching to it
-    if (newView == 'VUOSI') {
+    // 🔥 FORCE DISPLAY MODE REFRESH - Ensure it shows current data when switching to it
+    if (newView == 'DISPLAY') {
       // Trigger a refresh after the view has been built
       WidgetsBinding.instance.addPostFrameCallback((_) {
         SharedAssignmentData.forceRefresh();
@@ -186,7 +186,7 @@ class _MainNavigationViewState extends State<MainNavigationView> {
 
     // Show view based on current selection and user tier
     switch (_currentView) {
-      case 'VIIKKO':
+      case 'EDIT':
         if (_userTier.canAccessWeekView) {
           return WeekView(
             weekNumber: _currentWeek,
@@ -194,14 +194,14 @@ class _MainNavigationViewState extends State<MainNavigationView> {
             onViewChanged: _handleViewChange,
           );
         } else {
-          // Fallback to year view for restricted users
+          // Fallback to display mode for restricted users
           return YearView(
             initialWeek: _currentWeek,
             onWeekChanged: _handleWeekChange,
             onViewChanged: _handleViewChange,
           );
         }
-      case 'VUOSI':
+      case 'DISPLAY':
         return YearView(
           initialWeek: _currentWeek,
           onWeekChanged: _handleWeekChange,

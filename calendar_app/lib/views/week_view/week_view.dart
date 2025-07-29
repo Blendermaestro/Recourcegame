@@ -3388,12 +3388,12 @@ class _WeekViewState extends State<WeekView> {
                           if (_hasPendingChanges) {
                             _forceSave();
                           }
-                          widget.onViewChanged?.call('VUOSI');
+                          widget.onViewChanged?.call('DISPLAY');
                           HapticFeedback.lightImpact();
                         },
                         icon: const Icon(Icons.calendar_view_month, size: 14, color: Colors.white),
                         padding: EdgeInsets.zero,
-                        tooltip: 'Year Overview',
+                        tooltip: 'Display Mode',
                       ),
                     ),
                   ],
@@ -3504,27 +3504,27 @@ class _WeekViewState extends State<WeekView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.calendar_view_week, color: Colors.white),
-              title: const Text('VIIKKO', style: TextStyle(color: Colors.white)),
+              leading: const Icon(Icons.edit, color: Colors.white),
+              title: const Text('EDIT MODE', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 // 🔥 FIX: Don't wait for async save during UI navigation
                 if (_hasPendingChanges) {
                   _forceSave();
                 }
-                widget.onViewChanged?.call('VIIKKO');
+                widget.onViewChanged?.call('EDIT');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.calendar_view_month, color: Colors.white),
-              title: const Text('VUOSI', style: TextStyle(color: Colors.white)),
+              leading: const Icon(Icons.visibility, color: Colors.white),
+              title: const Text('DISPLAY MODE', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 // 🔥 FIX: Don't wait for async save during UI navigation
                 if (_hasPendingChanges) {
                   _forceSave();
                 }
-                widget.onViewChanged?.call('VUOSI');
+                widget.onViewChanged?.call('DISPLAY');
               },
             ),
             ListTile(
