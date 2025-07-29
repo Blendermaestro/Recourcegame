@@ -698,7 +698,7 @@ class _WeekViewState extends State<WeekView> {
     }
   }
   
-  // 🔥 PROTECTED CLOUD SAVING - Safe during drag operations
+  // 🔥 FIXED CLOUD SAVING - No more duplicates or deletion issues
   Future<void> _saveAssignments() async {
     try {
       // 🔥 DEDUPLICATE ASSIGNMENTS - Remove duplicate employees
@@ -707,7 +707,7 @@ class _WeekViewState extends State<WeekView> {
       // Collect all assignments to save for this week
       final assignmentsToSave = <Map<String, dynamic>>[];
       final assignmentKeys = <String>{}; // Track constraint keys to avoid duplicates
-      final existingAssignmentKeys = <String>{}; // Track keys in original format for deletion comparison
+      final currentAssignmentKeys = <String>{}; // Track keys in CORRECT format for deletion comparison
       
       for (final entry in _assignments.entries) {
         final parsed = _parseAssignmentKey(entry.key);
@@ -717,10 +717,8 @@ class _WeekViewState extends State<WeekView> {
             final shiftType = parsed['shiftTitle'].toLowerCase().contains('yö') ? 'night' : 'day';
             final userId = SharedDataService.supabase.auth.currentUser?.id;
             
-            // Create a constraint key to avoid duplicates (matches DB constraint)
-            final constraintKey = '$userId-${parsed['weekNumber']}-${parsed['day']}-$shiftType-$lane';
-            
-
+            // 🔥 FIX: Use shared constraint key (no user_id for shared data)
+            final constraintKey = '${parsed['weekNumber']}-${parsed['day']}-$shiftType-$lane';
             
             // Only add if we haven't already processed this constraint combination
             if (!assignmentKeys.contains(constraintKey)) {
@@ -736,9 +734,11 @@ class _WeekViewState extends State<WeekView> {
               
               assignmentKeys.add(constraintKey);
               
-              // Also track in original format for deletion comparison
-              final originalKey = '${parsed['weekNumber']}-${parsed['day']}-${parsed['shiftTitle']}-$lane';
-              existingAssignmentKeys.add(originalKey);
+              // 🔥 FIX: Track in the SAME format that loadAssignments returns
+              // Format: weekNumber-shiftTitle-dayIndex-profession-professionRow  
+              final professionString = _enumToString(parsed['profession']);
+              final currentKey = '${parsed['weekNumber']}-${parsed['shiftTitle']}-${parsed['day']}-$professionString-${parsed['professionRow']}';
+              currentAssignmentKeys.add(currentKey);
             }
           }
         }
@@ -746,13 +746,12 @@ class _WeekViewState extends State<WeekView> {
       
       // Get existing assignments for this week to see what needs to be deleted
       final existingAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
-      
       final assignmentsToDelete = <Map<String, dynamic>>[];
       
+      // 🔥 FIX: Compare keys in the SAME format
       for (final existingKey in existingAssignments.keys) {
-        if (!existingAssignmentKeys.contains(existingKey)) {
+        if (!currentAssignmentKeys.contains(existingKey)) {
           // This assignment exists in DB but not in our current assignments - should be deleted
-          // Parse new key format: weekNumber-shiftTitle-day-profession-professionRow
           final parsed = _parseAssignmentKey(existingKey);
           if (parsed != null) {
             final lane = _getProfessionToAbsoluteLane(parsed['profession'], parsed['professionRow'], parsed['shiftTitle']);
@@ -768,60 +767,34 @@ class _WeekViewState extends State<WeekView> {
         }
       }
       
-      // ATOMIC OPERATIONS: Use batch upsert for saves and batch delete for removals
+      // 🔥 SIMPLIFIED SAVING: Just use shared constraint directly
       if (assignmentsToSave.isNotEmpty) {
-
-        
-        // Save assignments with upsert - works with both old and new schema
         for (final assignment in assignmentsToSave) {
-          try {
-            // Try with new shared constraint first
-            await SharedDataService.supabase.from('work_assignments').upsert(
-              [assignment],
-              onConflict: 'week_number,day_index,shift_type,lane',
-              ignoreDuplicates: false
-            );
-          } catch (e) {
-            try {
-              // Fallback: try with old user-specific constraint
-              await SharedDataService.supabase.from('work_assignments').upsert(
-                [assignment],
-                onConflict: 'user_id,week_number,day_index,shift_type,lane',
-                ignoreDuplicates: false
-              );
-            } catch (e2) {
-              // Last resort: delete then insert
-              await SharedDataService.supabase.from('work_assignments')
-                .delete()
-                .eq('week_number', assignment['week_number'])
-                .eq('day_index', assignment['day_index'])
-                .eq('shift_type', assignment['shift_type'])
-                .eq('lane', assignment['lane']);
-              
-              await SharedDataService.supabase.from('work_assignments').insert([assignment]);
-            }
-          }
+          // Delete first, then insert - guarantees no duplicates
+          await SharedDataService.supabase.from('work_assignments')
+            .delete()
+            .eq('week_number', assignment['week_number'])
+            .eq('day_index', assignment['day_index'])
+            .eq('shift_type', assignment['shift_type'])
+            .eq('lane', assignment['lane']);
+          
+          await SharedDataService.supabase.from('work_assignments').insert([assignment]);
         }
       }
       
       // Delete assignments that are no longer needed
       for (final deleteData in assignmentsToDelete) {
-        await SharedDataService.deleteAssignment(
-          weekNumber: deleteData['week_number'],
-          dayIndex: deleteData['day_index'],
-          shiftTitle: deleteData['shift_title'],
-          lane: deleteData['lane'],
-        );
+        await SharedDataService.supabase.from('work_assignments')
+          .delete()
+          .eq('week_number', deleteData['week_number'])
+          .eq('day_index', deleteData['day_index'])
+          .eq('shift_type', deleteData['shift_type'])
+          .eq('lane', deleteData['lane']);
       }
-      
-      // Clear old SharedPreferences data (migration)
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('assignments');
       
       print('✅ Saved ${assignmentsToSave.length} assignments, deleted ${assignmentsToDelete.length}');
       
-      // Force refresh to ensure UI shows latest data
-      await _refreshAssignmentsFromSupabase();
+      // 🔥 FIX: No auto-refresh to avoid UI jumps
     } catch (e) {
       print('WeekView: Error saving assignments: $e');
       rethrow; // Let calling code handle the error appropriately
@@ -985,6 +958,11 @@ class _WeekViewState extends State<WeekView> {
     } catch (e) {
       return null;
     }
+  }
+
+  /// Convert enum to string (same as SharedDataService)  
+  String _enumToString(dynamic enumValue) {
+    return enumValue.toString().split('.').last;
   }
 
   void _showAddEmployeeDialog(EmployeeCategory category) {
