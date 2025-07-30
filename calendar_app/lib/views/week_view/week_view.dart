@@ -90,6 +90,9 @@ class _WeekViewState extends State<WeekView> {
   void initState() {
     super.initState();
     
+    // 🧹 PERFORMANCE: Cleanup expired cache on startup
+    cleanupExpiredCache();
+    
     // FORCE INITIALIZE PROFESSION SETTINGS FOR CURRENT WEEK IMMEDIATELY
     if (!_weekDayShiftProfessions.containsKey(widget.weekNumber)) {
       _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
@@ -149,6 +152,9 @@ class _WeekViewState extends State<WeekView> {
         }
       });
     }
+    
+    // 🧹 PERFORMANCE: Cleanup expired cache entries periodically
+    cleanupExpiredCache();
     
     super.dispose();
   }
@@ -945,11 +951,24 @@ class _WeekViewState extends State<WeekView> {
       return;
     }
     
-    // 🔥 ALWAYS RELOAD ASSIGNMENTS ON VIEW INIT - Ensure latest data
-    // Only skip reload during active drag operations or if explicitly optimizing
+    // 🏎️ INTELLIGENT CACHE CHECK - Use cached data if available and fresh
+    if (!forceReload && _isCacheValid(widget.weekNumber)) {
+      final cachedData = _assignmentCache[widget.weekNumber]!;
+      print('WeekView: ⚡ CACHE HIT for week ${widget.weekNumber} (${cachedData.length} assignments)');
+      SharedAssignmentData.updateAssignmentsForWeek(widget.weekNumber, cachedData);
+      _hasLoadedOnce = true;
+      if (mounted) {
+        setState(() {});
+      }
+      // 🔮 PREDICTIVE PRELOADING in background
+      _preloadAdjacentWeeks();
+      return;
+    }
+    
+    // 🔥 FALLBACK: Check SharedAssignmentData cache
     final existingCount = SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber);
     if (!forceReload && existingCount > 0 && _hasLoadedOnce) {
-      print('WeekView: Found ${existingCount} existing assignments for week ${widget.weekNumber}, using cached data');
+      print('WeekView: Found ${existingCount} existing assignments for week ${widget.weekNumber}, using SharedAssignmentData cache');
       if (mounted) {
         setState(() {});
       }
@@ -961,23 +980,31 @@ class _WeekViewState extends State<WeekView> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('assignments');
       
-      print('WeekView: Loading assignments from database for week ${widget.weekNumber}${forceReload ? " (forced)" : ""}...');
+      print('WeekView: 🔄 Loading assignments from database for week ${widget.weekNumber}${forceReload ? " (forced)" : ""}...');
       
       // Load assignments from Supabase database for current week ONLY
       final supabaseAssignments = await SharedDataService.loadAssignments(widget.weekNumber);
       
+      // 🏎️ CACHE THE RESULTS for ultra-fast future access
+      _assignmentCache[widget.weekNumber] = Map<String, Employee>.from(supabaseAssignments);
+      _cacheTimestamps[widget.weekNumber] = DateTime.now();
+      
       // Update assignments for current week (clears old + adds new + notifies)
       SharedAssignmentData.updateAssignmentsForWeek(widget.weekNumber, supabaseAssignments);
       
-      print('WeekView: Loaded ${SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber)} assignments for week ${widget.weekNumber} (Total: ${SharedAssignmentData.assignmentCount})');
+      print('WeekView: ✅ Loaded ${SharedAssignmentData.getWeekAssignmentCount(widget.weekNumber)} assignments for week ${widget.weekNumber} (Total: ${SharedAssignmentData.assignmentCount})');
       
       _hasLoadedOnce = true; // Mark as loaded
       
       if (mounted && !_isDragActive) {
         setState(() {});
       }
+      
+      // 🔮 PREDICTIVE PRELOADING in background
+      _preloadAdjacentWeeks();
+      
     } catch (e) {
-      print('WeekView: Error loading assignments: $e');
+      print('WeekView: ❌ Error loading assignments: $e');
       // Only clear current week assignments if not in drag mode
       if (!_isDragActive) {
         SharedAssignmentData.clearWeek(widget.weekNumber);
@@ -1007,6 +1034,65 @@ class _WeekViewState extends State<WeekView> {
       }
     } catch (e) {
       print('WeekView: ❌ Error refreshing assignments: $e');
+    }
+  }
+
+  // 🏎️ CACHE VALIDATION - Check if cached data is still fresh
+  bool _isCacheValid(int weekNumber) {
+    if (!_assignmentCache.containsKey(weekNumber) || !_cacheTimestamps.containsKey(weekNumber)) {
+      return false;
+    }
+    final age = DateTime.now().difference(_cacheTimestamps[weekNumber]!);
+    return age.inMinutes < _cacheExpirationMinutes;
+  }
+
+  // 🔮 PREDICTIVE PRELOADING - Load adjacent weeks in background for instant navigation
+  void _preloadAdjacentWeeks() {
+    for (int offset in [-1, 1]) {
+      final targetWeek = widget.weekNumber + offset;
+      if (!_preloadedWeeks.contains(targetWeek) && !_isCacheValid(targetWeek)) {
+        _preloadedWeeks.add(targetWeek);
+        // Preload in background with small delay to not impact current UI
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _preloadWeekData(targetWeek);
+        });
+      }
+    }
+  }
+
+  // 🔮 PRELOAD WEEK DATA in background
+  Future<void> _preloadWeekData(int weekNumber) async {
+    try {
+      print('WeekView: 🔮 Preloading week $weekNumber in background...');
+      final assignments = await SharedDataService.loadAssignments(weekNumber);
+      _assignmentCache[weekNumber] = Map<String, Employee>.from(assignments);
+      _cacheTimestamps[weekNumber] = DateTime.now();
+      print('WeekView: ✅ Preloaded week $weekNumber (${assignments.length} assignments)');
+    } catch (e) {
+      print('WeekView: ⚠️ Preload failed for week $weekNumber: $e');
+      _preloadedWeeks.remove(weekNumber); // Allow retry later
+    }
+  }
+
+  // 🧹 CACHE CLEANUP - Remove expired cache entries
+  static void cleanupExpiredCache() {
+    final now = DateTime.now();
+    final expiredWeeks = <int>[];
+    
+    for (final entry in _cacheTimestamps.entries) {
+      if (now.difference(entry.value).inMinutes >= _cacheExpirationMinutes) {
+        expiredWeeks.add(entry.key);
+      }
+    }
+    
+    for (final week in expiredWeeks) {
+      _assignmentCache.remove(week);
+      _cacheTimestamps.remove(week);
+      _preloadedWeeks.remove(week);
+    }
+    
+    if (expiredWeeks.isNotEmpty) {
+      print('WeekView: 🧹 Cleaned up ${expiredWeeks.length} expired cache entries');
     }
   }
 
@@ -2025,12 +2111,21 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
+  // 🚀 BATCHED RESIZE UPDATE FLAG - prevents setState spam
+  bool _hasPendingResizeUpdate = false;
+  
+  // 🏎️ INTELLIGENT CACHING SYSTEM
+  static final Map<int, Map<String, Employee>> _assignmentCache = {};
+  static final Map<int, DateTime> _cacheTimestamps = {};
+  static const int _cacheExpirationMinutes = 5;
+  static final Set<int> _preloadedWeeks = <int>{};
+  
   void _handleLeftResize(DragUpdateDetails details, Employee employee, String shiftTitle) {
     if (_resizeModeBlockKey == null || _dragStates == null) return;
     
     final currentDragState = _dragStates![_resizeModeBlockKey!];
     if (currentDragState != null) {
-      // 🔥 OPTIMIZED: Update only drag position, not full rebuild
+      // 🚀 ULTRA-SMOOTH: Update drag state without immediate rebuild
       _dragStates![_resizeModeBlockKey!] = DragState(
         startX: currentDragState.startX,
         currentX: details.globalPosition.dx,
@@ -2038,7 +2133,17 @@ class _WeekViewState extends State<WeekView> {
         originalStartDay: currentDragState.originalStartDay,
         originalDuration: currentDragState.originalDuration,
       );
-      setState(() {}); // Minimal state update
+      
+      // 🔄 BATCHED UPDATE: Only one setState per frame (60fps max)
+      if (!_hasPendingResizeUpdate) {
+        _hasPendingResizeUpdate = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {});
+            _hasPendingResizeUpdate = false;
+          }
+        });
+      }
     }
   }
 
@@ -2047,7 +2152,7 @@ class _WeekViewState extends State<WeekView> {
     
     final currentDragState = _dragStates![_resizeModeBlockKey!];
     if (currentDragState != null) {
-      // 🔥 OPTIMIZED: Update only drag position, not full rebuild
+      // 🚀 ULTRA-SMOOTH: Update drag state without immediate rebuild
       _dragStates![_resizeModeBlockKey!] = DragState(
         startX: currentDragState.startX,
         currentX: details.globalPosition.dx,
@@ -2055,7 +2160,17 @@ class _WeekViewState extends State<WeekView> {
         originalStartDay: currentDragState.originalStartDay,
         originalDuration: currentDragState.originalDuration,
       );
-      setState(() {}); // Minimal state update
+      
+      // 🔄 BATCHED UPDATE: Only one setState per frame (60fps max)
+      if (!_hasPendingResizeUpdate) {
+        _hasPendingResizeUpdate = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {});
+            _hasPendingResizeUpdate = false;
+          }
+        });
+      }
     }
   }
 
