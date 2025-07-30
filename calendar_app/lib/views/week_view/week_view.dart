@@ -468,9 +468,9 @@ class _WeekViewState extends State<WeekView> {
       }
     });
     
-    // 🔥 INSTANT UI + IMMEDIATE CLOUD SAVE for critical operations
-    print('WeekView: 🎯 DRAG ENDED - ${employee.name} assigned to ${daysToAllocate.length} days. Saving immediately...');
-    _performCloudSave(force: true);
+    // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE to prevent connection errors
+    print('WeekView: 🎯 DRAG ENDED - ${employee.name} assigned to ${daysToAllocate.length} days. Scheduling save...');
+    _scheduleCloudSave();
     _dragOriginalAssignment = null;
     
     // Success message with smart feedback
@@ -2128,15 +2128,9 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
-      final effectiveWidth = _getEffectiveWidth();
-      final professionColumnWidth = 32.0; // Match actual display width
-      final containerMargins = 4.0; // 2px left + 2px right outer margins  
-      final containerBorderWidth = 2.0; // 1px left + 1px right container border
-      // NOTE: Expanded widgets don't care about child borders - they distribute parent space
-      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
-      final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
-      final gridLeft = professionColumnWidth;
+      // 🔥 USE ACCURATE WIDTH CALCULATION
+      final dayWidth = _getActualDayWidth(context);
+      final gridLeft = 32.0; // Profession column width
       
       // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
       final keyParts = blockKey.split('|');
@@ -2192,8 +2186,8 @@ class _WeekViewState extends State<WeekView> {
       _isDragActive = false; // Allow cloud saves again
     });
     
-    // 🔥 IMMEDIATE SAVE: Critical resize operations save instantly
-    _performCloudSave(force: true);
+    // 🔥 DEBOUNCED SAVE: Prevent connection errors during resize
+    _scheduleCloudSave();
     } catch (e) {
       print('❌ Error during resize: $e');
       // Clear drag state on error
@@ -2644,14 +2638,8 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
-    final effectiveWidth = _getEffectiveWidth();
-    final professionColumnWidth = 32.0; // Match actual display width
-    final containerMargins = 4.0; // 2px left + 2px right outer margins
-    final containerBorderWidth = 2.0; // 1px left + 1px right container border
-    // NOTE: Expanded widgets don't care about child borders - they distribute parent space
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
-    final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
+    // 🔥 USE ACCURATE WIDTH CALCULATION  
+    final dayWidth = _getActualDayWidth(context);
     
     // Calculate total rows for current shift
     int totalRows = 0;
@@ -2826,14 +2814,8 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
-    final effectiveWidth = _getEffectiveWidth();
-    final professionColumnWidth = 32.0; // Match actual display width
-    final containerMargins = 4.0; // 2px left + 2px right outer margins
-    final containerBorderWidth = 2.0; // 1px left + 1px right container border
-    // NOTE: Expanded widgets don't care about child borders - they distribute parent space
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
-    final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
+    // 🔥 USE ACCURATE WIDTH CALCULATION
+    final dayWidth = _getActualDayWidth(context);
     
     // Calculate total rows for both shifts
     int dayShiftRows = 0;
@@ -3258,15 +3240,9 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
-          final effectiveWidth = _getEffectiveWidth();
-          final professionColumnWidth = 32.0; // Match actual display width
-          final containerMargins = 4.0; // 2px left + 2px right outer margins
-          final containerBorderWidth = 2.0; // 1px left + 1px right container border
-          // NOTE: Expanded widgets don't care about child borders - they distribute parent space
-          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
-          final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
-          final gridLeft = professionColumnWidth;
+          // 🔥 USE ACCURATE WIDTH CALCULATION
+          final dayWidth = _getActualDayWidth(context);
+          final gridLeft = 32.0; // Profession column width
           final relativeX = localPosition.dx - gridLeft;
           final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
           
@@ -3951,6 +3927,25 @@ class _WeekViewState extends State<WeekView> {
     if (keysToRemove.isNotEmpty) {
       print('🔥 OVERLAP: Removed ${keysToRemove.length} conflicting assignments');
     }
+  }
+
+  // 🔥 ACCURATE WIDTH CALCULATION - Measure actual available space
+  double _getActualDayWidth(BuildContext context) {
+    final effectiveWidth = _getEffectiveWidth();
+    
+    // Account for EXACT layout structure:
+    // 1. Calendar container margins: 2px left + 2px right = 4px
+    // 2. Shift container border: 1px left + 1px right = 2px  
+    // 3. Profession column: 32px
+    final calendarMargins = 4.0;
+    final containerBorder = 2.0;
+    final professionColumn = 32.0;
+    
+    final availableForGrid = effectiveWidth - calendarMargins - containerBorder - professionColumn;
+    final dayWidth = availableForGrid / 7;
+    
+    print('🔍 Width Debug: total=$effectiveWidth, available=$availableForGrid, dayWidth=$dayWidth');
+    return dayWidth;
   }
 
 } 

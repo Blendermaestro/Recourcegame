@@ -893,7 +893,7 @@ class _YearViewState extends State<YearView> {
                   const SizedBox(width: 8),
                   Expanded(
                       child: Text(
-                      'DISPLAY - W$_currentWeek',
+                      'W$_currentWeek',
                         style: const TextStyle(
                         fontSize: 10, // Tiny size to match phone screen
                         fontWeight: FontWeight.bold,

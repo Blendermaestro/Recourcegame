@@ -99,7 +99,32 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     super.initState();
     _currentWeek = widget.initialWeek;
     _loadUserTier();
+    _loadLastWeekPosition(); // 🔥 RESTORE WEEK POSITION
     _runMigration(); // Safely migrate local data to Supabase
+  }
+  
+  // 🔥 PERSIST WEEK POSITION - Remember where user left off
+  Future<void> _loadLastWeekPosition() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedWeek = prefs.getInt('last_week_position');
+      if (savedWeek != null && mounted) {
+        setState(() {
+          _currentWeek = savedWeek;
+        });
+      }
+    } catch (e) {
+      print('Error loading last week position: $e');
+    }
+  }
+  
+  Future<void> _saveWeekPosition() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_week_position', _currentWeek);
+    } catch (e) {
+      print('Error saving week position: $e');
+    }
   }
   
   /// Safely migrate local data to Supabase (one-time per user)
@@ -184,6 +209,7 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     setState(() {
       _currentWeek = newWeek;
     });
+    _saveWeekPosition(); // 🔥 SAVE WEEK POSITION WHEN CHANGED
   }
 
   @override
