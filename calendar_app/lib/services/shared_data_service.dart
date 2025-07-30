@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:calendar_app/models/employee.dart';
+import 'package:calendar_app/models/vacation_absence.dart';
 import 'dart:convert';
 
 // Helper functions for enum conversion
@@ -342,6 +343,53 @@ class SharedDataService {
     }
   }
 
+  // VACATION OPERATIONS - Shared access for all users
+  static Future<void> saveVacation(VacationAbsence vacation) async {
+    try {
+      await _supabase.from('vacation_absences').upsert({
+        'vacation_id': vacation.id,
+        'employee_id': vacation.employeeId,
+        'start_date': vacation.startDate.toIso8601String().split('T')[0], // Date only
+        'end_date': vacation.endDate.toIso8601String().split('T')[0], // Date only
+        'type': vacation.type.name,
+        'reason': vacation.reason,
+        'notes': vacation.notes,
+        'user_id': _supabase.auth.currentUser?.id,
+      });
+      print('SharedDataService: Saved vacation ${vacation.id}');
+    } catch (e) {
+      print('SharedDataService: Error saving vacation: $e');
+      throw e;
+    }
+  }
+
+  static Future<void> deleteVacation(String vacationId) async {
+    try {
+      await _supabase
+          .from('vacation_absences')
+          .delete()
+          .eq('vacation_id', vacationId);
+      print('SharedDataService: Deleted vacation $vacationId');
+    } catch (e) {
+      print('SharedDataService: Error deleting vacation: $e');
+      throw e;
+    }
+  }
+
+  static Future<List<VacationAbsence>> loadVacations() async {
+    try {
+      final response = await _supabase
+          .from('vacation_absences')
+          .select()
+          .order('start_date', ascending: false);
+      
+      return response.map((json) => VacationAbsence.fromSupabase(json)).toList();
+    } catch (e) {
+      print('SharedDataService: Error loading vacations: $e');
+      return [];
+    }
+  }
+
   // CLEAR ALL DATA - For reset functionality
   static Future<void> clearAllData() async {
     try {
@@ -353,6 +401,9 @@ class SharedDataService {
       
       // Delete all week settings
       await _supabase.from('week_settings').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Delete all vacations
+      await _supabase.from('vacation_absences').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       
       print('All shared data cleared from database');
     } catch (e) {

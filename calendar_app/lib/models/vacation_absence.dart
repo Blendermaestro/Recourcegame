@@ -46,6 +46,19 @@ class VacationAbsence {
     );
   }
 
+  // 🔥 NEW: Support Supabase data format
+  factory VacationAbsence.fromSupabase(Map<String, dynamic> json) {
+    return VacationAbsence(
+      id: json['vacation_id'],
+      employeeId: json['employee_id'],
+      type: VacationAbsenceType.values.byName(json['type']),
+      startDate: DateTime.parse(json['start_date']),
+      endDate: DateTime.parse(json['end_date']),
+      reason: json['reason'],
+      notes: json['notes'],
+    );
+  }
+
   String getDisplayText() {
     final startFormatted = '${startDate.day}.${startDate.month}';
     final endFormatted = '${endDate.day}.${endDate.month}';

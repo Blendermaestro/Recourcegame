@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:calendar_app/models/employee.dart';
 import 'package:calendar_app/services/shared_data_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/models/vacation_absence.dart';
+import 'package:calendar_app/data/vacation_manager.dart';
+import '../../vacation_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
@@ -20,12 +23,14 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
   EmployeeCategory _selectedCategory = EmployeeCategory.ab;
   
   List<Employee> _employees = [];
+  List<VacationAbsence> _vacations = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadEmployees();
+    _loadVacations();
     _loadCategoryColors();
   }
 
@@ -51,6 +56,17 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
           SnackBar(content: Text('Error loading employees: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _loadVacations() async {
+    try {
+      await VacationManager.loadVacations();
+      setState(() {
+        _vacations = VacationManager.vacations;
+      });
+    } catch (e) {
+      print('Error loading vacations: $e');
     }
   }
 
@@ -265,6 +281,10 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 🔥 NEW: Vacation Management Section
+                  _buildVacationSection(),
+                  const SizedBox(height: 20),
+                  
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
