@@ -2111,8 +2111,7 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
-  // 🚀 BATCHED RESIZE UPDATE FLAG - prevents setState spam
-  bool _hasPendingResizeUpdate = false;
+
   
   // 🏎️ INTELLIGENT CACHING SYSTEM
   static final Map<int, Map<String, Employee>> _assignmentCache = {};
@@ -2134,15 +2133,9 @@ class _WeekViewState extends State<WeekView> {
         originalDuration: currentDragState.originalDuration,
       );
       
-      // 🔄 BATCHED UPDATE: Only one setState per frame (60fps max)
-      if (!_hasPendingResizeUpdate) {
-        _hasPendingResizeUpdate = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {});
-            _hasPendingResizeUpdate = false;
-          }
-        });
+      // 🚀 IMMEDIATE UPDATE: Direct setState for smooth animation
+      if (mounted) {
+        setState(() {});
       }
     }
   }
@@ -2161,15 +2154,9 @@ class _WeekViewState extends State<WeekView> {
         originalDuration: currentDragState.originalDuration,
       );
       
-      // 🔄 BATCHED UPDATE: Only one setState per frame (60fps max)
-      if (!_hasPendingResizeUpdate) {
-        _hasPendingResizeUpdate = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {});
-            _hasPendingResizeUpdate = false;
-          }
-        });
+      // 🚀 IMMEDIATE UPDATE: Direct setState for smooth animation
+      if (mounted) {
+        setState(() {});
       }
     }
   }
