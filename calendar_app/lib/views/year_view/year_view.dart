@@ -240,53 +240,58 @@ class _YearViewState extends State<YearView> {
     }
   }
 
-  // 🚀 YEAR VIEW ACTIVE LOADING - Load data independently like WeekView
+  // 🚀 YEAR VIEW USES EDIT DATA - Get data from SharedAssignmentData like edit view
   Future<void> _loadAssignments() async {
     try {
       // Clear old SharedPreferences data (migration) - one time only
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('assignments');
       
-      print('Year View - 🔄 Loading assignments for current week $_currentWeek...');
+      print('Year View - 🔄 Using edit view data for week $_currentWeek...');
       
-      // 🚀 ALWAYS LOAD CURRENT WEEK (no dependency on SharedAssignmentData)
-      final currentWeekAssignments = await SharedDataService.loadAssignments(_currentWeek);
-      SharedAssignmentData.updateAssignmentsForWeek(_currentWeek, currentWeekAssignments);
-      print('Year View - ✅ Loaded current week $_currentWeek: ${currentWeekAssignments.length} assignments');
+      // 🔥 USE EDIT VIEW DATA: Check if current week has data in SharedAssignmentData
+      if (SharedAssignmentData.getWeekAssignmentCount(_currentWeek) == 0) {
+        // Only load if edit view hasn't loaded it yet
+        final currentWeekAssignments = await SharedDataService.loadAssignments(_currentWeek);
+        SharedAssignmentData.updateAssignmentsForWeek(_currentWeek, currentWeekAssignments);
+        print('Year View - ✅ Loaded current week $_currentWeek: ${currentWeekAssignments.length} assignments');
+      } else {
+        print('Year View - ⚡ Using cached edit view data for week $_currentWeek: ${SharedAssignmentData.getWeekAssignmentCount(_currentWeek)} assignments');
+      }
       
       if (mounted) {
         setState(() {});
       }
       
-      // 🔮 BACKGROUND LOADING: Load all visible weeks for smooth navigation
-      final List<int> priorityWeeks = [
+      // 🔮 SMART PRELOADING: Load adjacent weeks only if not already loaded
+      final List<int> adjacentWeeks = [
         _currentWeek - 1,
         _currentWeek + 1,
-        _currentWeek - 2,
+        _currentWeek - 2, 
         _currentWeek + 2,
-        _currentWeek - 3,
-        _currentWeek + 3,
       ].where((week) => week >= 1 && week <= 52).toList();
       
-      for (final week in priorityWeeks) {
-        Future.delayed(Duration(milliseconds: 50 * priorityWeeks.indexOf(week)), () async {
-          try {
-            final weekAssignments = await SharedDataService.loadAssignments(week);
-            SharedAssignmentData.updateAssignmentsForWeek(week, weekAssignments);
-            print('Year View - 🔮 Background loaded week $week: ${weekAssignments.length} assignments');
-            if (mounted) {
-              setState(() {});
+      for (final week in adjacentWeeks) {
+        if (SharedAssignmentData.getWeekAssignmentCount(week) == 0) {
+          Future.delayed(Duration(milliseconds: 100 * adjacentWeeks.indexOf(week)), () async {
+            try {
+              final weekAssignments = await SharedDataService.loadAssignments(week);
+              SharedAssignmentData.updateAssignmentsForWeek(week, weekAssignments);
+              print('Year View - 🔮 Preloaded adjacent week $week: ${weekAssignments.length} assignments');
+              if (mounted) {
+                setState(() {});
+              }
+            } catch (e) {
+              print('Year View - ⚠️ Preload failed for week $week: $e');
             }
-          } catch (e) {
-            print('Year View - ⚠️ Background load failed for week $week: $e');
-          }
-        });
+          });
+        }
       }
       
-      print('Year View - ✅ Active loading complete: ${SharedAssignmentData.assignmentCount} total assignments');
+      print('Year View - ✅ Edit view data sync complete: ${SharedAssignmentData.assignmentCount} total assignments');
       
     } catch (e) {
-      print('Year View - ❌ Error loading assignments: $e');
+      print('Year View - ❌ Error syncing with edit view: $e');
       if (mounted) {
         setState(() {});
       }

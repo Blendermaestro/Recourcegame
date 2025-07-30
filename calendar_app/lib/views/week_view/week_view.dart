@@ -3206,64 +3206,40 @@ class _WeekViewState extends State<WeekView> {
       key: ValueKey(blockKey),
       child: Builder(
         builder: (context) {
-          // 🎨 VISUAL STRETCH ANIMATION (doesn't affect resize logic)
-          Matrix4? visualTransform;
+          // 🔥 REAL STRETCHING ANIMATION - No scaling bullshit!
           bool showResizeHighlight = false;
           
           if (isInResizeMode && _dragStates?[blockKey] != null) {
-            final dragState = _dragStates![blockKey]!;
-            final deltaX = dragState.currentX - dragState.startX;
-            final dayWidth = _getActualDayWidth(context);
             showResizeHighlight = true;
-            
-            if (dragState.isLeftResize) {
-              // 🎨 LEFT RESIZE: Block visually follows cursor - left edge moves
-              final newVisualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
-              final clampedLeft = newVisualLeft.clamp(0.0, 6 * dayWidth);
-              final originalRight = (dragState.originalStartDay + dragState.originalDuration) * dayWidth;
-              final newWidth = originalRight - clampedLeft;
-              
-              visualTransform = Matrix4.identity()
-                ..translate(clampedLeft - (dragState.originalStartDay * dayWidth), 0.0)
-                ..scale(newWidth / (dragState.originalDuration * dayWidth), 1.0);
-            } else {
-              // 🎨 RIGHT RESIZE: Block visually follows cursor - right edge moves
-              final newVisualWidth = (dragState.originalDuration * dayWidth) + deltaX;
-              final clampedWidth = newVisualWidth.clamp(dayWidth * 0.5, dayWidth * (7 - dragState.originalStartDay));
-              
-              visualTransform = Matrix4.identity()
-                ..scale(clampedWidth / (dragState.originalDuration * dayWidth), 1.0);
-            }
           }
           
-          return Transform(
-            transform: visualTransform ?? Matrix4.identity(),
-            child: Container(
-              decoration: BoxDecoration(
-                // 🎨 VISUAL HIGHLIGHT during resize
-                border: showResizeHighlight 
-                  ? Border.all(color: Colors.blue.withOpacity(0.7), width: 2)
-                  : null,
-                borderRadius: BorderRadius.circular(4),
-                boxShadow: showResizeHighlight ? [
-                  BoxShadow(
-                    color: Colors.blue.withOpacity(0.2),
-                    blurRadius: 6.0,
-                    offset: const Offset(0, 2),
-                  ),
-                ] : null,
-              ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: () {
-                  // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
-                  _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-                  HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
-                },
-                child: isInResizeMode 
-                  ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
-                  : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
-              ),
+          return Container(
+            width: double.infinity,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              // 🎨 VISUAL HIGHLIGHT during resize
+              border: showResizeHighlight 
+                ? Border.all(color: Colors.blue.withOpacity(0.8), width: 2)
+                : null,
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: showResizeHighlight ? [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3),
+                  blurRadius: 4.0,
+                  offset: const Offset(0, 1),
+                ),
+              ] : null,
+            ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: () {
+                // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
+                _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+                HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
+              },
+              child: isInResizeMode 
+                ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
+                : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
             ),
           );
         },
@@ -4153,6 +4129,46 @@ class _WeekViewState extends State<WeekView> {
     
     print('🎯 PERFECTED Width: screen=$effectiveWidth, expanded=$expandedAvailableWidth, dayWidth=$dayWidth');
     return dayWidth;
+  }
+
+  // 🔥 HELPER: Get block duration for visual stretching
+  int _getBlockDuration(Employee employee, String shiftTitle, int startDay) {
+    int duration = 1;
+    final professionInfo = _getAbsoluteLaneToProfession(_getEmployeeLane(employee, shiftTitle, startDay), shiftTitle);
+    if (professionInfo == null) return 1;
+    
+    final profession = professionInfo['profession'] as EmployeeRole;
+    final professionRow = professionInfo['row'] as int;
+    
+    // Count consecutive days starting from startDay
+    for (int day = startDay + 1; day < 7; day++) {
+      final key = _generateAssignmentKey(widget.weekNumber, shiftTitle, day, profession, professionRow);
+      if (SharedAssignmentData.assignments.containsKey(key) && 
+          SharedAssignmentData.assignments[key]?.id == employee.id) {
+        duration++;
+      } else {
+        break;
+      }
+    }
+    return duration;
+  }
+
+  // 🔥 HELPER: Get employee lane for duration calculation
+  int _getEmployeeLane(Employee employee, String shiftTitle, int startDay) {
+    // Find the lane this employee is assigned to
+    for (final entry in SharedAssignmentData.assignments.entries) {
+      final parsed = _parseAssignmentKey(entry.key);
+      if (parsed != null && 
+          parsed['weekNumber'] == widget.weekNumber && 
+          parsed['shiftTitle'] == shiftTitle && 
+          parsed['day'] == startDay &&
+          entry.value.id == employee.id) {
+        final profession = parsed['profession'] as EmployeeRole;
+        final professionRow = parsed['professionRow'] as int;
+        return _getProfessionToAbsoluteLane(profession, professionRow, shiftTitle);
+      }
+    }
+    return 0;
   }
 
 } 
