@@ -2157,17 +2157,23 @@ class _WeekViewState extends State<WeekView> {
       final deltaX = dragState.currentX - dragState.startX;
       
       if (dragState.isLeftResize) {
-        // LEFT RESIZE - change start day, keep original end
-        final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
-        final newStartDay = targetDay.clamp(0, originalEnd);
-        final newDuration = originalEnd - newStartDay + 1;
+        // 🎯 LEFT RESIZE: Calculate new start position from visual position  
+        final newVisualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
+        final newStartDay = (newVisualLeft / dayWidth).round().clamp(0, 6);
+        final originalEndDay = dragState.originalStartDay + dragState.originalDuration - 1;
+        final newDuration = (originalEndDay - newStartDay + 1).clamp(1, 7);
         
-        if (newStartDay != dragState.originalStartDay && newDuration > 0) {
+        print('🎯 LEFT RESIZE: visual=${newVisualLeft}, newStart=${newStartDay}, duration=${newDuration}');
+        
+        if (newStartDay != dragState.originalStartDay || newDuration != dragState.originalDuration) {
           _handleResize(employee, shiftTitle, newStartDay, newDuration, profession, professionRow);
         }
       } else {
-        // RIGHT RESIZE - keep original start, change duration
-        final newDuration = (targetDay - dragState.originalStartDay + 1).clamp(1, 7 - dragState.originalStartDay);
+        // 🎯 RIGHT RESIZE: Calculate new duration from visual width
+        final newVisualWidth = (dragState.originalDuration * dayWidth) + deltaX + 1; // +1 for border compensation
+        final newDuration = (newVisualWidth / dayWidth).round().clamp(1, 7 - dragState.originalStartDay);
+        
+        print('🎯 RIGHT RESIZE: visual=${newVisualWidth}, duration=${newDuration}, dayWidth=${dayWidth}');
         
         if (newDuration != dragState.originalDuration) {
           _handleResize(employee, shiftTitle, dragState.originalStartDay, newDuration, profession, professionRow);
