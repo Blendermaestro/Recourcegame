@@ -468,7 +468,7 @@ class _YearViewState extends State<YearView> {
         children: [
           // Profession header space - REMOVED "ROLE" TEXT
           Container(
-            width: 50, // Reduced from 75 for more compact design
+            width: 32, // 🔥 MATCH WEEK VIEW: Consistent with week view profession column
             child: const Center(
               child: Text(
                 '', // Empty - no more "ROLE" text
@@ -523,11 +523,11 @@ class _YearViewState extends State<YearView> {
   Widget _buildShiftView(int weekNumber, String shiftTitle, bool isDayShift) {
     const rowHeight = 20.0; // Reduced from 24.0 to fit more content
     final effectiveWidth = _getEffectiveWidth();
-    final professionColumnWidth = 50.0;
+    final professionColumnWidth = 32.0; // 🔥 MATCH WEEK VIEW: Same as week view for consistency
     final containerMargins = 4.0; // 2px left + 2px right from container margins
     final borderWidth = 2.0; // 1px left + 1px right from container borders
     final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
-    final dayWidth = availableGridWidth / 7; // Precise calculation
+    final dayWidth = availableGridWidth / 7; // Precise calculation matching week view
     
     final professions = isDayShift 
         ? _getDayShiftProfessions(weekNumber)
@@ -562,7 +562,7 @@ class _YearViewState extends State<YearView> {
             color: const Color(0xFF5C6B73), // MATCH WEEK VIEW ACTIVE TAB COLOR!
             child: Row(
               children: [
-                Container(width: 50), // Reduced from 75 to match header
+                Container(width: 32), // 🔥 MATCH WEEK VIEW: Consistent profession column width
                 Expanded(
                   child: Center(
                       child: Text(
@@ -584,7 +584,7 @@ class _YearViewState extends State<YearView> {
               children: [
                 // Profession labels column
                 SizedBox(
-                  width: 50, // Reduced from 75 for more compact design
+                  width: 32, // 🔥 MATCH WEEK VIEW: Consistent with week view and calculations
                   child: Column( // Remove scroll for profession labels to prevent misalignment
                     children: _buildProfessionLabels(visibleProfessions, rows, rowHeight),
                   ),

@@ -3929,22 +3929,27 @@ class _WeekViewState extends State<WeekView> {
     }
   }
 
-  // 🔥 ACCURATE WIDTH CALCULATION - Measure actual available space
+  // 🔥 PERFECTED WIDTH CALCULATION - Match Flutter's Expanded behavior exactly
   double _getActualDayWidth(BuildContext context) {
     final effectiveWidth = _getEffectiveWidth();
     
-    // Account for EXACT layout structure:
-    // 1. Calendar container margins: 2px left + 2px right = 4px
-    // 2. Shift container border: 1px left + 1px right = 2px  
-    // 3. Profession column: 32px
-    final calendarMargins = 4.0;
-    final containerBorder = 2.0;
-    final professionColumn = 32.0;
+    // EXACT layout analysis:
+    // 1. Main calendar container margins: 2px left + 2px right = 4px (from line 3511)
+    // 2. Shift container border: 1px left + 1px right = 2px (from line 2557)  
+    // 3. Profession column: 32px (from line 2565)
+    // 4. Expanded widget takes remaining space and divides by 7 for day headers
     
-    final availableForGrid = effectiveWidth - calendarMargins - containerBorder - professionColumn;
-    final dayWidth = availableForGrid / 7;
+    final outerMargins = 4.0;      // Calendar container margins
+    final shiftBorder = 2.0;       // Shift container border  
+    final professionWidth = 32.0;  // Profession labels column
     
-    print('🔍 Width Debug: total=$effectiveWidth, available=$availableForGrid, dayWidth=$dayWidth');
+    // This is the EXACT space that the Expanded widget sees
+    final expandedAvailableWidth = effectiveWidth - outerMargins - shiftBorder - professionWidth;
+    
+    // Flutter's Expanded divides this space equally among 7 day columns
+    final dayWidth = expandedAvailableWidth / 7.0;
+    
+    print('🎯 PERFECTED Width: screen=$effectiveWidth, expanded=$expandedAvailableWidth, dayWidth=$dayWidth');
     return dayWidth;
   }
 
