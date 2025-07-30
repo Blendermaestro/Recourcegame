@@ -13,10 +13,10 @@ import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'dart:js' as js if (dart.library.html);
 import 'fullscreen_stub.dart' 
   if (dart.library.html) 'fullscreen_web.dart' 
   if (dart.library.io) 'fullscreen_mobile.dart' as fullscreen;
-// Platform-specific import removed - will use conditional web APIs
 
 class DragState {
   final double startX;
@@ -120,6 +120,42 @@ class _WeekViewState extends State<WeekView> {
         setState(() {});
       }
     });
+    
+    // 🔥 ADD PAGE UNLOAD HANDLER - Save before refresh/close
+    _setupPageUnloadHandler();
+  }
+  
+  // 🔥 SETUP PAGE UNLOAD HANDLER TO SAVE DATA BEFORE REFRESH
+  void _setupPageUnloadHandler() {
+    if (kIsWeb) {
+      // Use dynamic import for web-only functionality
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          // Access window through dynamic typing to avoid import issues
+          final window = ((){
+            // This will only work on web, will be null on mobile
+            try {
+              return (kIsWeb) ? js.context['window'] : null;
+            } catch (e) {
+              return null;
+            }
+          })();
+          
+          if (window != null) {
+            window['onbeforeunload'] = (event) {
+              if (_hasPendingChanges && !_isSaving) {
+                // Force immediate save before page unload
+                _performCloudSave(force: true);
+                return 'You have unsaved changes. Are you sure you want to leave?';
+              }
+              return null;
+            };
+          }
+        } catch (e) {
+          print('Failed to setup unload handler: $e');
+        }
+      });
+    }
   }
 
   Future<void> _loadCurrentYear() async {
@@ -430,9 +466,9 @@ class _WeekViewState extends State<WeekView> {
       }
     });
     
-    // 🔥 INSTANT UI + DEBOUNCED CLOUD SAVE
-    print('WeekView: 🎯 DRAG ENDED - ${employee.name} assigned to ${daysToAllocate.length} days. Scheduling save...');
-    _scheduleCloudSave();
+    // 🔥 INSTANT UI + IMMEDIATE CLOUD SAVE for critical operations
+    print('WeekView: 🎯 DRAG ENDED - ${employee.name} assigned to ${daysToAllocate.length} days. Saving immediately...');
+    _performCloudSave(force: true);
     _dragOriginalAssignment = null;
     
     // Success message with smart feedback
@@ -682,9 +718,9 @@ class _WeekViewState extends State<WeekView> {
     }
 
     _hasPendingChanges = true;
-    print('WeekView: ⏰ Scheduling ATOMIC save in 500ms... (Current assignments: ${_assignments.length}, isDragActive: $_isDragActive)');
+    print('WeekView: ⏰ Scheduling ATOMIC save in 100ms... (Current assignments: ${_assignments.length}, isDragActive: $_isDragActive)');
     _saveDebounceTimer?.cancel();
-    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 100), () {
       print('WeekView: 🚀 Timer fired - hasPending:$_hasPendingChanges, isDragActive:$_isDragActive, isSaving:$_isSaving');
       if (_hasPendingChanges && !_isDragActive && !_isSaving) {
         print('WeekView: 🚀 Executing ATOMIC cloud save...');
@@ -2154,8 +2190,8 @@ class _WeekViewState extends State<WeekView> {
       _isDragActive = false; // Allow cloud saves again
     });
     
-    // 🔥 FIX: Don't bypass debounce timer - let scheduled save handle it
-    _scheduleCloudSave();
+    // 🔥 IMMEDIATE SAVE: Critical resize operations save instantly
+    _performCloudSave(force: true);
     } catch (e) {
       print('❌ Error during resize: $e');
       // Clear drag state on error
