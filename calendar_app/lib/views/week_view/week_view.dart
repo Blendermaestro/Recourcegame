@@ -125,6 +125,34 @@ class _WeekViewState extends State<WeekView> {
     _setupPageUnloadHandler();
   }
   
+  // 🔥 DETECT WEEK CHANGES - Preload data when week number changes
+  @override
+  void didUpdateWidget(WeekView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    if (oldWidget.weekNumber != widget.weekNumber) {
+      print('WeekView: Week changed from ${oldWidget.weekNumber} to ${widget.weekNumber} - preloading data...');
+      
+      // Initialize profession settings for new week
+      if (!_weekDayShiftProfessions.containsKey(widget.weekNumber)) {
+        _weekDayShiftProfessions[widget.weekNumber] = Map.from(_getDefaultDayShiftProfessions());
+      }
+      if (!_weekNightShiftProfessions.containsKey(widget.weekNumber)) {
+        _weekNightShiftProfessions[widget.weekNumber] = Map.from(_getDefaultNightShiftProfessions());
+      }
+      if (!_weekDayShiftRows.containsKey(widget.weekNumber)) {
+        _weekDayShiftRows[widget.weekNumber] = Map.from(_getDefaultDayShiftRows());
+      }
+      if (!_weekNightShiftRows.containsKey(widget.weekNumber)) {
+        _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
+      }
+      
+      // Preload assignments for new week
+      _loadAssignments(forceReload: true);
+      _loadProfessionSettings();
+    }
+  }
+  
   // 🔥 SIMPLIFIED UNLOAD HANDLER - Just rely on faster saves
   void _setupPageUnloadHandler() {
     // For now, just rely on 100ms debounce + immediate saves for critical operations
@@ -2100,14 +2128,14 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 GRID SNAPPING CALCULATION - Match display exactly including cell borders
+      // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
       final effectiveWidth = _getEffectiveWidth();
       final professionColumnWidth = 32.0; // Match actual display width
-      final containerMargins = 4.0; // 2px left + 2px right outer margins
+      final containerMargins = 4.0; // 2px left + 2px right outer margins  
       final containerBorderWidth = 2.0; // 1px left + 1px right container border
-      final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
-      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
-      final dayWidth = availableGridWidth / 7;
+      // NOTE: Expanded widgets don't care about child borders - they distribute parent space
+      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
+      final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
       final gridLeft = professionColumnWidth;
       
       // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
@@ -2616,14 +2644,14 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
+    // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
     final effectiveWidth = _getEffectiveWidth();
     final professionColumnWidth = 32.0; // Match actual display width
     final containerMargins = 4.0; // 2px left + 2px right outer margins
     final containerBorderWidth = 2.0; // 1px left + 1px right container border
-    final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
-    final dayWidth = availableGridWidth / 7;
+    // NOTE: Expanded widgets don't care about child borders - they distribute parent space
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
+    final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
     
     // Calculate total rows for current shift
     int totalRows = 0;
@@ -2798,14 +2826,14 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
+    // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
     final effectiveWidth = _getEffectiveWidth();
     final professionColumnWidth = 32.0; // Match actual display width
     final containerMargins = 4.0; // 2px left + 2px right outer margins
     final containerBorderWidth = 2.0; // 1px left + 1px right container border
-    final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
-    final dayWidth = availableGridWidth / 7;
+    // NOTE: Expanded widgets don't care about child borders - they distribute parent space
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
+    final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
     
     // Calculate total rows for both shifts
     int dayShiftRows = 0;
@@ -3230,14 +3258,14 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
+          // 🔥 MATCH EXPANDED WIDGET BEHAVIOR - How Flutter actually distributes space
           final effectiveWidth = _getEffectiveWidth();
           final professionColumnWidth = 32.0; // Match actual display width
           final containerMargins = 4.0; // 2px left + 2px right outer margins
           final containerBorderWidth = 2.0; // 1px left + 1px right container border
-          final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
-          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
-          final dayWidth = availableGridWidth / 7;
+          // NOTE: Expanded widgets don't care about child borders - they distribute parent space
+          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth;
+          final dayWidth = availableGridWidth / 7; // This matches how Expanded distributes space
           final gridLeft = professionColumnWidth;
           final relativeX = localPosition.dx - gridLeft;
           final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
