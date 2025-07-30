@@ -4,7 +4,7 @@ import 'package:calendar_app/services/shared_data_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:calendar_app/models/vacation_absence.dart';
 import 'package:calendar_app/data/vacation_manager.dart';
-import '../../vacation_dialog.dart';
+import 'package:calendar_app/vacation_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
@@ -448,5 +448,255 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
               ),
             ),
     );
+  }
+
+  // 🔥 NEW: Vacation Management Section
+  Widget _buildVacationSection() {
+    return Card(
+      child: ExpansionTile(
+        title: Row(
+          children: [
+            const Icon(Icons.beach_access, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('Lomat ja Poissaolot'),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_vacations.length}',
+                style: TextStyle(
+                  color: Colors.blue[800],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Add vacation button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _showAddVacationDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Lisää Loma/Poissaolo'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[600],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Current vacations list
+                if (_vacations.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.grey[600]),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Ei lomia tai poissaoloja',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...(_vacations.take(5).map((vacation) => _buildVacationItem(vacation))),
+                
+                if (_vacations.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'ja ${_vacations.length - 5} muuta...',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVacationItem(VacationAbsence vacation) {
+    final employee = _employees.where((e) => e.id == vacation.employeeId).firstOrNull;
+    final employeeName = employee?.name ?? 'Tuntematon työntekijä';
+    
+    final now = DateTime.now();
+    final isActive = vacation.isActiveOn(now);
+    final isUpcoming = vacation.startDate.isAfter(now);
+    
+    Color statusColor = Colors.grey;
+    String statusText = 'Päättynyt';
+    IconData statusIcon = Icons.history;
+    
+    if (isActive) {
+      statusColor = Colors.red;
+      statusText = 'Käynnissä';
+      statusIcon = Icons.block;
+    } else if (isUpcoming) {
+      statusColor = Colors.orange;
+      statusText = 'Tuleva';
+      statusIcon = Icons.schedule;
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(8),
+        color: statusColor.withOpacity(0.05),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(statusIcon, color: statusColor, size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  employeeName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  vacation.getDisplayText(),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+                if (vacation.reason != null && vacation.reason!.isNotEmpty)
+                  Text(
+                    vacation.reason!,
+                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              statusText,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => _deleteVacation(vacation.id),
+            icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddVacationDialog() {
+    if (_employees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lisää ensin työntekijöitä!')),
+      );
+      return;
+    }
+    
+    showDialog(
+      context: context,
+      builder: (context) => VacationDialog(
+        employees: _employees,
+        onSave: (vacation) async {
+          try {
+            await VacationManager.addVacation(vacation);
+            await _loadVacations(); // Refresh the list
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('✅ Loma/poissaolo lisätty: ${vacation.getDisplayText()}')),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('❌ Virhe: $e')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  void _deleteVacation(String vacationId) async {
+    final vacation = _vacations.where((v) => v.id == vacationId).firstOrNull;
+    if (vacation == null) return;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Poista loma/poissaolo'),
+        content: Text('Haluatko varmasti poistaa: ${vacation.getDisplayText()}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Peruuta'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Poista'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      try {
+        await VacationManager.removeVacation(vacationId);
+        await _loadVacations(); // Refresh the list
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Loma/poissaolo poistettu')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ Virhe: $e')),
+          );
+        }
+      }
+    }
   }
 }
