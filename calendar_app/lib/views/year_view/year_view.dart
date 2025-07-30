@@ -249,40 +249,38 @@ class _YearViewState extends State<YearView> {
       
       print('Year View - 🔄 Loading assignments for current week $_currentWeek...');
       
-      // 🚀 LOAD CURRENT WEEK FIRST (what user sees immediately)
-      if (SharedAssignmentData.getWeekAssignmentCount(_currentWeek) == 0) {
-        final currentWeekAssignments = await SharedDataService.loadAssignments(_currentWeek);
-        SharedAssignmentData.updateAssignmentsForWeek(_currentWeek, currentWeekAssignments);
-        print('Year View - ✅ Loaded current week $_currentWeek: ${currentWeekAssignments.length} assignments');
-        
-        if (mounted) {
-          setState(() {});
-        }
+      // 🚀 ALWAYS LOAD CURRENT WEEK (no dependency on SharedAssignmentData)
+      final currentWeekAssignments = await SharedDataService.loadAssignments(_currentWeek);
+      SharedAssignmentData.updateAssignmentsForWeek(_currentWeek, currentWeekAssignments);
+      print('Year View - ✅ Loaded current week $_currentWeek: ${currentWeekAssignments.length} assignments');
+      
+      if (mounted) {
+        setState(() {});
       }
       
-      // 🔮 BACKGROUND LOADING: Load adjacent weeks for smooth navigation
+      // 🔮 BACKGROUND LOADING: Load all visible weeks for smooth navigation
       final List<int> priorityWeeks = [
         _currentWeek - 1,
         _currentWeek + 1,
         _currentWeek - 2,
         _currentWeek + 2,
+        _currentWeek - 3,
+        _currentWeek + 3,
       ].where((week) => week >= 1 && week <= 52).toList();
       
       for (final week in priorityWeeks) {
-        if (SharedAssignmentData.getWeekAssignmentCount(week) == 0) {
-          Future.delayed(Duration(milliseconds: 100 * priorityWeeks.indexOf(week)), () async {
-            try {
-              final weekAssignments = await SharedDataService.loadAssignments(week);
-              SharedAssignmentData.updateAssignmentsForWeek(week, weekAssignments);
-              print('Year View - 🔮 Background loaded week $week: ${weekAssignments.length} assignments');
-              if (mounted) {
-                setState(() {});
-              }
-            } catch (e) {
-              print('Year View - ⚠️ Background load failed for week $week: $e');
+        Future.delayed(Duration(milliseconds: 50 * priorityWeeks.indexOf(week)), () async {
+          try {
+            final weekAssignments = await SharedDataService.loadAssignments(week);
+            SharedAssignmentData.updateAssignmentsForWeek(week, weekAssignments);
+            print('Year View - 🔮 Background loaded week $week: ${weekAssignments.length} assignments');
+            if (mounted) {
+              setState(() {});
             }
-          });
-        }
+          } catch (e) {
+            print('Year View - ⚠️ Background load failed for week $week: $e');
+          }
+        });
       }
       
       print('Year View - ✅ Active loading complete: ${SharedAssignmentData.assignmentCount} total assignments');

@@ -3217,17 +3217,22 @@ class _WeekViewState extends State<WeekView> {
             showResizeHighlight = true;
             
             if (dragState.isLeftResize) {
-              // 🎨 LEFT RESIZE: Visual feedback for left edge dragging
-              final scaleFactor = 1.0 + (deltaX.abs() * 0.0008); // Subtle scale
-              final translateX = deltaX * 0.3; // Smooth visual movement
+              // 🎨 LEFT RESIZE: Block visually follows cursor - left edge moves
+              final newVisualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
+              final clampedLeft = newVisualLeft.clamp(0.0, 6 * dayWidth);
+              final originalRight = (dragState.originalStartDay + dragState.originalDuration) * dayWidth;
+              final newWidth = originalRight - clampedLeft;
+              
               visualTransform = Matrix4.identity()
-                ..translate(translateX, 0.0)
-                ..scale(scaleFactor, 1.0);
+                ..translate(clampedLeft - (dragState.originalStartDay * dayWidth), 0.0)
+                ..scale(newWidth / (dragState.originalDuration * dayWidth), 1.0);
             } else {
-              // 🎨 RIGHT RESIZE: Visual feedback for right edge dragging  
-              final scaleFactor = 1.0 + (deltaX * 0.0015); // Stretch effect
+              // 🎨 RIGHT RESIZE: Block visually follows cursor - right edge moves
+              final newVisualWidth = (dragState.originalDuration * dayWidth) + deltaX;
+              final clampedWidth = newVisualWidth.clamp(dayWidth * 0.5, dayWidth * (7 - dragState.originalStartDay));
+              
               visualTransform = Matrix4.identity()
-                ..scale(scaleFactor.clamp(0.5, 2.0), 1.0);
+                ..scale(clampedWidth / (dragState.originalDuration * dayWidth), 1.0);
             }
           }
           
