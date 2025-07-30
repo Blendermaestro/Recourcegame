@@ -104,6 +104,12 @@ class _WeekViewState extends State<WeekView> {
       _weekNightShiftRows[widget.weekNumber] = Map.from(_getDefaultNightShiftRows());
     }
     
+    // Listen for assignment data changes
+    SharedAssignmentData.addListener(_onAssignmentDataChanged);
+    
+    // 🔥 LISTEN FOR YEAR CHANGES FROM OTHER VIEWS
+    SharedAssignmentData.addYearChangeListener(_onYearChanged);
+    
     _loadCurrentYear(); // Load the selected year
     _clearOldDataOnFirstRun(); // Clear old data during migration
     _loadCustomProfessions(); // Load custom professions first
@@ -123,6 +129,47 @@ class _WeekViewState extends State<WeekView> {
     
     // 🔥 ADD PAGE UNLOAD HANDLER - Save before refresh/close
     _setupPageUnloadHandler();
+  }
+  
+  @override
+  void dispose() {
+    _saveDebounceTimer?.cancel();
+    
+    // Remove listeners when widget is disposed
+    SharedAssignmentData.removeListener(_onAssignmentDataChanged);
+    SharedAssignmentData.removeYearChangeListener(_onYearChanged);
+    
+    // 🔥 FIX: Don't force async save in dispose - just mark for immediate save
+    if (_hasPendingChanges && !_isDragActive && !_isSaving) {
+      print('WeekView: Marking for immediate save on dispose...');
+      // Schedule immediate save without waiting
+      Timer(Duration.zero, () {
+        if (!_isSaving) {
+          _performCloudSave(force: true);
+        }
+      });
+    }
+    
+    super.dispose();
+  }
+  
+  void _onAssignmentDataChanged() {
+    if (mounted && !_isDragActive) {
+      setState(() {});
+      print('Week View - Refreshed due to assignment data change');
+    }
+  }
+  
+  // 🔥 HANDLE YEAR CHANGES FROM OTHER VIEWS
+  void _onYearChanged(int newYear) {
+    if (mounted && newYear != _currentYear) {
+      setState(() {
+        _currentYear = newYear;
+      });
+      _saveCurrentYear(); // Save the new year
+      _loadAssignments(forceReload: true); // Reload assignments for new year
+      print('Week View - Year changed from other view to: $newYear');
+    }
   }
   
   // 🔥 DETECT WEEK CHANGES - Preload data when week number changes
@@ -181,10 +228,9 @@ class _WeekViewState extends State<WeekView> {
     
     setState(() {
       _currentYear = currentYear;
-      SharedAssignmentData.currentYear = currentYear;
     });
     
-    // Save the current year
+    SharedAssignmentData.setCurrentYear(currentYear); // 🔥 NOTIFY ALL VIEWS
     _saveCurrentYear();
     
     // Navigate to current week
@@ -214,23 +260,7 @@ class _WeekViewState extends State<WeekView> {
     return kIsWeb && screenWidth > 800 ? 800.0 : screenWidth;
   }
 
-  @override
-  void dispose() {
-    _saveDebounceTimer?.cancel();
-    
-    // 🔥 FIX: Don't force async save in dispose - just mark for immediate save
-    if (_hasPendingChanges && !_isDragActive && !_isSaving) {
-      print('WeekView: Marking for immediate save on dispose...');
-      // Schedule immediate save without waiting
-      Timer(Duration.zero, () {
-        if (!_isSaving) {
-          _performCloudSave(force: true);
-        }
-      });
-    }
-    
-    super.dispose();
-  }
+  // 🗑️ REMOVED: Duplicate dispose method - merged with the one above
 
   // Clear old data during migration to new Supabase system
   Future<void> _clearOldDataOnFirstRun() async {
@@ -2159,9 +2189,9 @@ class _WeekViewState extends State<WeekView> {
       if (dragState.isLeftResize) {
         // 🎯 LEFT RESIZE: Calculate new start position from visual position  
         final newVisualLeft = (dragState.originalStartDay * dayWidth) + deltaX;
-        final newStartDay = (newVisualLeft / dayWidth).round().clamp(0, 6);
+        final newStartDay = (newVisualLeft / dayWidth).round().clamp(0, 6).toInt();
         final originalEndDay = dragState.originalStartDay + dragState.originalDuration - 1;
-        final newDuration = (originalEndDay - newStartDay + 1).clamp(1, 7);
+        final newDuration = (originalEndDay - newStartDay + 1).clamp(1, 7).toInt();
         
         print('🎯 LEFT RESIZE: visual=${newVisualLeft}, newStart=${newStartDay}, duration=${newDuration}');
         
@@ -2171,7 +2201,7 @@ class _WeekViewState extends State<WeekView> {
       } else {
         // 🎯 RIGHT RESIZE: Calculate new duration from visual width
         final newVisualWidth = (dragState.originalDuration * dayWidth) + deltaX + 1; // +1 for border compensation
-        final newDuration = (newVisualWidth / dayWidth).round().clamp(1, 7 - dragState.originalStartDay);
+        final newDuration = (newVisualWidth / dayWidth).round().clamp(1, 7 - dragState.originalStartDay).toInt();
         
         print('🎯 RIGHT RESIZE: visual=${newVisualWidth}, duration=${newDuration}, dayWidth=${dayWidth}');
         

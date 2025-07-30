@@ -56,6 +56,9 @@ class _YearViewState extends State<YearView> {
     // Listen for assignment data changes
     SharedAssignmentData.addListener(_onAssignmentDataChanged);
     
+    // 🔥 LISTEN FOR YEAR CHANGES FROM OTHER VIEWS
+    SharedAssignmentData.addYearChangeListener(_onYearChanged);
+    
     _loadUserTier(); // Load user tier for permissions
     _loadSelectedYear(); // Load saved year selection
     _loadCustomProfessions(); // Load custom professions first
@@ -76,8 +79,20 @@ class _YearViewState extends State<YearView> {
   @override
   void dispose() {
     SharedAssignmentData.removeListener(_onAssignmentDataChanged);
+    SharedAssignmentData.removeYearChangeListener(_onYearChanged);
     _pageController.dispose();
     super.dispose();
+  }
+  
+  // 🔥 HANDLE YEAR CHANGES FROM OTHER VIEWS
+  void _onYearChanged(int newYear) {
+    if (mounted && newYear != _selectedYear) {
+      setState(() {
+        _selectedYear = newYear;
+      });
+      _saveSelectedYear(); // Save the new year
+      print('Year View - Year changed from other view to: $newYear');
+    }
   }
   
   void _onAssignmentDataChanged() {
@@ -164,8 +179,8 @@ class _YearViewState extends State<YearView> {
                 onTap: () {
                   setState(() {
                     _selectedYear = year;
-                    SharedAssignmentData.currentYear = year; // Update shared year
                   });
+                  SharedAssignmentData.setCurrentYear(year); // 🔥 NOTIFY ALL VIEWS
                   _saveSelectedYear();
                   Navigator.pop(context);
                 },

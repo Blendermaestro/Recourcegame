@@ -13,6 +13,9 @@ class SharedAssignmentData {
   // Callbacks for when data changes
   static final List<VoidCallback> _changeListeners = [];
   
+  // 🔥 YEAR CHANGE LISTENERS - Notify when year changes
+  static final List<Function(int)> _yearChangeListeners = [];
+  
   // Shared profession settings between all views  
   static final Map<int, Map<EmployeeRole, bool>> weekDayShiftProfessions = {};
   static final Map<int, Map<EmployeeRole, bool>> weekNightShiftProfessions = {};
@@ -293,5 +296,32 @@ class SharedAssignmentData {
   static void forceRefresh() {
     _notifyListeners();
     print('SharedAssignmentData - Forced refresh with ${assignmentCount} assignments');
+  }
+  
+  /// 🔥 SET CURRENT YEAR AND NOTIFY ALL VIEWS
+  static void setCurrentYear(int year) {
+    if (currentYear != year) {
+      currentYear = year;
+      print('SharedAssignmentData - Year changed to $year, notifying ${_yearChangeListeners.length} listeners');
+      for (final listener in _yearChangeListeners) {
+        try {
+          listener(year);
+        } catch (e) {
+          print('SharedAssignmentData - Error notifying year listener: $e');
+        }
+      }
+      // Also force refresh data views since assignments are year-specific
+      _notifyListeners();
+    }
+  }
+  
+  /// Add listener for year changes
+  static void addYearChangeListener(Function(int) listener) {
+    _yearChangeListeners.add(listener);
+  }
+  
+  /// Remove listener for year changes
+  static void removeYearChangeListener(Function(int) listener) {
+    _yearChangeListeners.remove(listener);
   }
 } 
