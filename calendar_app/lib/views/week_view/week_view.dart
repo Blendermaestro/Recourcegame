@@ -2926,8 +2926,14 @@ class _WeekViewState extends State<WeekView> {
           visualWidth = ((dragState.originalStartDay * dayWidth) + (dragState.originalDuration * dayWidth) + deltaX) - (dragState.originalStartDay * dayWidth) - 1;
         }
         
-        visualLeft = visualLeft.clamp(0, 6 * dayWidth);
-        visualWidth = visualWidth.clamp(dayWidth * 0.2, (7 * dayWidth) - visualLeft);
+        // 🚀 BUTTER SMOOTH: Allow visual flow beyond cell boundaries for smooth stretching
+        // Only prevent extreme off-screen positions, but allow crossing cell borders freely
+        final calendarWidth = 7 * dayWidth;
+        visualLeft = visualLeft.clamp(-dayWidth * 0.5, calendarWidth + dayWidth * 0.5);
+        
+        // Allow width to flow smoothly across calendar with generous bounds
+        final maxWidth = calendarWidth + dayWidth; // Allow extending past calendar edge
+        visualWidth = visualWidth.clamp(dayWidth * 0.1, maxWidth);
       }
       
       blocks.add(

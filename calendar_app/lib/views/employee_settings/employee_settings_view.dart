@@ -140,6 +140,70 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
     }
   }
 
+  Future<void> _editEmployee(Employee employee) async {
+    EmployeeCategory selectedCategory = employee.category;
+    
+    final result = await showDialog<EmployeeCategory>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Category for ${employee.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Current category: ${_getCategoryDisplayName(employee.category)}'),
+            const SizedBox(height: 16),
+            Text('Select new category:'),
+            const SizedBox(height: 8),
+            ...EmployeeCategory.values.map((category) => RadioListTile<EmployeeCategory>(
+              title: Text(_getCategoryDisplayName(category)),
+              value: category,
+              groupValue: selectedCategory,
+              onChanged: (value) {
+                selectedCategory = value!;
+                Navigator.pop(context, selectedCategory);
+              },
+            )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result != employee.category) {
+      try {
+        // Create updated employee with new category
+        final updatedEmployee = Employee(
+          id: employee.id,
+          name: employee.name,
+          category: result,
+          type: employee.type,
+          role: employee.role,
+          shiftCycle: employee.shiftCycle,
+        );
+
+        await SharedDataService.saveEmployee(updatedEmployee);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${employee.name} category updated to ${_getCategoryDisplayName(result)}')),
+          );
+          _loadEmployees(); // Refresh the list
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating employee: $e')),
+          );
+        }
+      }
+    }
+  }
+
   String _getCategoryDisplayName(EmployeeCategory category) {
     switch (category) {
       case EmployeeCategory.ab:
@@ -378,9 +442,20 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
                                 ),
                                 title: Text(employee.name),
                                 subtitle: Text(_getCategoryDisplayName(employee.category)),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _deleteEmployee(employee),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                      onPressed: () => _editEmployee(employee),
+                                      tooltip: 'Edit Category',
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () => _deleteEmployee(employee),
+                                      tooltip: 'Delete Employee',
+                                    ),
+                                  ],
                                 ),
                               ),
                             );
