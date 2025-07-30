@@ -346,7 +346,12 @@ class SharedDataService {
   // VACATION OPERATIONS - Shared access for all users
   static Future<void> saveVacation(VacationAbsence vacation) async {
     try {
-      await _supabase.from('vacation_absences').upsert({
+      final currentUser = _supabase.auth.currentUser;
+      print('SharedDataService: 🔄 Saving vacation ${vacation.id}...');
+      print('SharedDataService: User ID: ${currentUser?.id}');
+      print('SharedDataService: Vacation data: ${vacation.type.name} for ${vacation.employeeId} from ${vacation.startDate} to ${vacation.endDate}');
+      
+      final result = await _supabase.from('vacation_absences').upsert({
         'vacation_id': vacation.id,
         'employee_id': vacation.employeeId,
         'start_date': vacation.startDate.toIso8601String().split('T')[0], // Date only
@@ -354,11 +359,15 @@ class SharedDataService {
         'type': vacation.type.name,
         'reason': vacation.reason,
         'notes': vacation.notes,
-        'user_id': _supabase.auth.currentUser?.id,
+        'user_id': currentUser?.id,
       });
-      print('SharedDataService: Saved vacation ${vacation.id}');
+      
+      print('SharedDataService: ✅ Saved vacation ${vacation.id} to Supabase');
+      print('SharedDataService: Upsert result: $result');
+      
     } catch (e) {
-      print('SharedDataService: Error saving vacation: $e');
+      print('SharedDataService: ❌ Error saving vacation: $e');
+      print('SharedDataService: Stack trace: ${StackTrace.current}');
       throw e;
     }
   }

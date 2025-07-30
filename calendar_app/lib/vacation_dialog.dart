@@ -91,40 +91,40 @@ class _VacationDialogState extends State<VacationDialog> {
               ),
               const SizedBox(height: 20),
 
-              // Type Selection
-              Text(
-                'Tyyppi',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<VacationAbsenceType>(
-                      title: const Text('🏖️ Loma'),
-                      value: VacationAbsenceType.loma,
-                      groupValue: _selectedType,
-                      onChanged: (VacationAbsenceType? value) {
-                        setState(() {
-                          _selectedType = value ?? VacationAbsenceType.loma;
-                        });
-                      },
-                    ),
-                  ),
-                  Expanded(
-                    child: RadioListTile<VacationAbsenceType>(
-                      title: const Text('🚫 Poissaolo'),
-                      value: VacationAbsenceType.poissaolo,
-                      groupValue: _selectedType,
-                      onChanged: (VacationAbsenceType? value) {
-                        setState(() {
-                          _selectedType = value ?? VacationAbsenceType.loma;
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
+                             // Type Selection
+               Text(
+                 'Tyyppi',
+                 style: Theme.of(context).textTheme.labelLarge,
+               ),
+               const SizedBox(height: 8),
+               Row(
+                 children: [
+                   Expanded(
+                     child: RadioListTile<VacationAbsenceType>(
+                       title: const Text('Loma'),
+                       value: VacationAbsenceType.loma,
+                       groupValue: _selectedType,
+                       onChanged: (VacationAbsenceType? value) {
+                         setState(() {
+                           _selectedType = value ?? VacationAbsenceType.loma;
+                         });
+                       },
+                     ),
+                   ),
+                   Expanded(
+                     child: RadioListTile<VacationAbsenceType>(
+                       title: const Text('Poissaolo'),
+                       value: VacationAbsenceType.poissaolo,
+                       groupValue: _selectedType,
+                       onChanged: (VacationAbsenceType? value) {
+                         setState(() {
+                           _selectedType = value ?? VacationAbsenceType.loma;
+                         });
+                       },
+                     ),
+                   ),
+                 ],
+               ),
               const SizedBox(height: 20),
 
               // Date Selection

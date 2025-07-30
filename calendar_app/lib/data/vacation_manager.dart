@@ -10,23 +10,32 @@ class VacationManager {
   
   static Future<void> loadVacations() async {
     try {
+      print('VacationManager: Loading vacations from Supabase...');
+      
       // 🔥 NEW: Load from Supabase for shared access
       final response = await SharedDataService.supabase
           .from('vacation_absences')
-          .select();
+          .select()
+          .order('start_date', ascending: false);
       
       _vacations.clear();
       _vacations.addAll(
         response.map((json) => VacationAbsence.fromSupabase(json)).toList()
       );
       
-      print('VacationManager: Loaded ${_vacations.length} vacation/absence records from Supabase');
+      print('VacationManager: ✅ Loaded ${_vacations.length} vacation/absence records from Supabase');
+      if (_vacations.isNotEmpty) {
+        for (final vacation in _vacations.take(3)) {
+          print('VacationManager: - ${vacation.id}: ${vacation.type.name} for ${vacation.employeeId}');
+        }
+      }
       
       // 🔥 MIGRATION: Also load old SharedPreferences data if exists
       await _migrateOldVacationData();
       
     } catch (e) {
-      print('VacationManager: Error loading vacations: $e');
+      print('VacationManager: ❌ Error loading vacations: $e');
+      print('VacationManager: Stack trace: ${StackTrace.current}');
       // Fallback to SharedPreferences if Supabase fails
       await _loadFromSharedPreferences();
     }
@@ -86,12 +95,20 @@ class VacationManager {
   
   static Future<void> addVacation(VacationAbsence vacation) async {
     try {
+      print('VacationManager: 🔄 Saving vacation ${vacation.id} to Supabase...');
+      
       // 🔥 NEW: Save to Supabase for shared access
       await SharedDataService.saveVacation(vacation);
+      
+      // Add to local cache
       _vacations.add(vacation);
-      print('VacationManager: Added vacation ${vacation.id} to Supabase');
+      
+      print('VacationManager: ✅ Added vacation ${vacation.id} to Supabase and local cache');
+      print('VacationManager: Total vacations now: ${_vacations.length}');
+      
     } catch (e) {
-      print('VacationManager: Error adding vacation: $e');
+      print('VacationManager: ❌ Error adding vacation: $e');
+      print('VacationManager: Stack trace: ${StackTrace.current}');
       throw e;
     }
   }
