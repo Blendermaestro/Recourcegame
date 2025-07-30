@@ -184,17 +184,18 @@ class _YearViewState extends State<YearView> {
   }
 
   void _navigateToWeek(int weekNumber) {
-    if (weekNumber >= 1 && weekNumber <= 52) {
-      setState(() {
-        _currentWeek = weekNumber;
-      });
-      _pageController.animateToPage(
-        weekNumber - 1,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-      widget.onWeekChanged?.call(weekNumber);
-    }
+    setState(() {
+      _currentWeek = weekNumber.clamp(1, 52);
+    });
+    
+    _pageController.animateToPage(
+      _currentWeek - 1,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    
+    widget.onWeekChanged?.call(_currentWeek);
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _loadEmployees() async {
@@ -816,21 +817,7 @@ class _YearViewState extends State<YearView> {
     return currentWeek.clamp(1, 52);
   }
 
-  // 🔥 WEEK NAVIGATION FOR PC
-  void _navigateToWeek(int weekNumber) {
-    setState(() {
-      _currentWeek = weekNumber.clamp(1, 52);
-    });
-    
-    _pageController.animateToPage(
-      _currentWeek - 1,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-    
-    widget.onWeekChanged?.call(_currentWeek);
-    HapticFeedback.lightImpact();
-  }
+
 
   double _getEffectiveWidth() {
     final screenWidth = MediaQuery.of(context).size.width;
