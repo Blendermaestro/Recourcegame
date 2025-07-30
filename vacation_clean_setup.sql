@@ -94,7 +94,25 @@ SELECT policyname, cmd, permissive
 FROM pg_policies 
 WHERE tablename = 'vacation_absences';
 
--- Step 8: Test insert (this should work now)
+-- Step 8: Add unique constraint on vacation_id if needed
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints tc
+        JOIN information_schema.constraint_column_usage ccu 
+            ON tc.constraint_name = ccu.constraint_name
+        WHERE tc.table_name = 'vacation_absences' 
+        AND tc.constraint_type = 'UNIQUE'
+        AND ccu.column_name = 'vacation_id'
+    ) THEN
+        ALTER TABLE public.vacation_absences 
+        ADD CONSTRAINT vacation_absences_vacation_id_unique 
+        UNIQUE (vacation_id);
+        RAISE NOTICE '✅ Added unique constraint on vacation_id';
+    END IF;
+END $$;
+
+-- Step 9: Test insert (this should work now)
 INSERT INTO vacation_absences (
     vacation_id,
     employee_id,
@@ -113,9 +131,9 @@ INSERT INTO vacation_absences (
     'Test vacation - clean setup',
     'Test notes',
     auth.uid()
-) ON CONFLICT (vacation_id) DO NOTHING;
+);
 
--- Step 9: Show test data (should show at least one record)
+-- Step 10: Show test data (should show at least one record)
 SELECT 'Test records in vacation_absences:' as info;
 SELECT vacation_id, employee_id, type, reason, start_date, end_date
 FROM vacation_absences 
@@ -123,7 +141,7 @@ WHERE vacation_id LIKE 'test-%'
 ORDER BY vacation_id DESC
 LIMIT 3;
 
--- Step 10: Clean up test records
+-- Step 11: Clean up test records
 DELETE FROM vacation_absences WHERE vacation_id LIKE 'test-%';
 
 SELECT '✅ Vacation system setup completed successfully!' as result; 
