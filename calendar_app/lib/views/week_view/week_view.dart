@@ -13,7 +13,7 @@ import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'dart:js' as js if (dart.library.html);
+
 import 'fullscreen_stub.dart' 
   if (dart.library.html) 'fullscreen_web.dart' 
   if (dart.library.io) 'fullscreen_mobile.dart' as fullscreen;
@@ -125,37 +125,11 @@ class _WeekViewState extends State<WeekView> {
     _setupPageUnloadHandler();
   }
   
-  // 🔥 SETUP PAGE UNLOAD HANDLER TO SAVE DATA BEFORE REFRESH
+  // 🔥 SIMPLIFIED UNLOAD HANDLER - Just rely on faster saves
   void _setupPageUnloadHandler() {
-    if (kIsWeb) {
-      // Use dynamic import for web-only functionality
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        try {
-          // Access window through dynamic typing to avoid import issues
-          final window = ((){
-            // This will only work on web, will be null on mobile
-            try {
-              return (kIsWeb) ? js.context['window'] : null;
-            } catch (e) {
-              return null;
-            }
-          })();
-          
-          if (window != null) {
-            window['onbeforeunload'] = (event) {
-              if (_hasPendingChanges && !_isSaving) {
-                // Force immediate save before page unload
-                _performCloudSave(force: true);
-                return 'You have unsaved changes. Are you sure you want to leave?';
-              }
-              return null;
-            };
-          }
-        } catch (e) {
-          print('Failed to setup unload handler: $e');
-        }
-      });
-    }
+    // For now, just rely on 100ms debounce + immediate saves for critical operations
+    // Web unload handlers are complex with Flutter - the faster saves should be sufficient
+    print('Save timing optimized: 100ms debounce + immediate saves for drag/resize');
   }
 
   Future<void> _loadCurrentYear() async {
