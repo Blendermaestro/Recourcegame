@@ -2090,12 +2090,13 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 GRID SNAPPING CALCULATION - Match display exactly
+      // 🔥 GRID SNAPPING CALCULATION - Match display exactly including cell borders
       final effectiveWidth = _getEffectiveWidth();
       final professionColumnWidth = 32.0; // Match actual display width
-      final containerMargins = 4.0;
-      final borderWidth = 2.0;
-      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+      final containerMargins = 4.0; // 2px left + 2px right outer margins
+      final containerBorderWidth = 2.0; // 1px left + 1px right container border
+      final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
+      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
       final dayWidth = availableGridWidth / 7;
       final gridLeft = professionColumnWidth;
       
@@ -2605,12 +2606,13 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH DISPLAY CALCULATION EXACTLY
+    // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
     final effectiveWidth = _getEffectiveWidth();
     final professionColumnWidth = 32.0; // Match actual display width
-    final containerMargins = 4.0;
-    final borderWidth = 2.0;
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+    final containerMargins = 4.0; // 2px left + 2px right outer margins
+    final containerBorderWidth = 2.0; // 1px left + 1px right container border
+    final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
     final dayWidth = availableGridWidth / 7;
     
     // Calculate total rows for current shift
@@ -2786,12 +2788,13 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH DISPLAY CALCULATION EXACTLY
+    // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
     final effectiveWidth = _getEffectiveWidth();
     final professionColumnWidth = 32.0; // Match actual display width
-    final containerMargins = 4.0;
-    final borderWidth = 2.0;
-    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+    final containerMargins = 4.0; // 2px left + 2px right outer margins
+    final containerBorderWidth = 2.0; // 1px left + 1px right container border
+    final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
     final dayWidth = availableGridWidth / 7;
     
     // Calculate total rows for both shifts
@@ -3217,12 +3220,13 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          // 🔥 MATCH DISPLAY CALCULATION EXACTLY
+          // 🔥 MATCH DISPLAY CALCULATION EXACTLY including cell borders
           final effectiveWidth = _getEffectiveWidth();
           final professionColumnWidth = 32.0; // Match actual display width
-          final containerMargins = 4.0;
-          final borderWidth = 2.0;
-          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+          final containerMargins = 4.0; // 2px left + 2px right outer margins
+          final containerBorderWidth = 2.0; // 1px left + 1px right container border
+          final cellBorderWidth = 7.0; // 0.5px * 2 sides * 7 cells = 7px total
+          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - containerBorderWidth - cellBorderWidth;
           final dayWidth = availableGridWidth / 7;
           final gridLeft = professionColumnWidth;
           final relativeX = localPosition.dx - gridLeft;
