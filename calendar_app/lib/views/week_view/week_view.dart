@@ -2128,9 +2128,8 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 USE ACCURATE WIDTH CALCULATION
+      // 🔥 USE VISUAL WIDTH INSTEAD OF CURSOR POSITION - More reliable!
       final dayWidth = _getActualDayWidth(context);
-      final gridLeft = 32.0; // Profession column width
       
       // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
       final keyParts = blockKey.split('|');
@@ -2154,10 +2153,9 @@ class _WeekViewState extends State<WeekView> {
         return;
       }
       
-      final relativeX = dragState.currentX - gridLeft;
-      final targetDay = (relativeX / dayWidth).round().clamp(0, 6); // 🔥 SNAP TO NEAREST CELL
+      // 🎯 VISUAL-BASED SNAPPING: Use actual visual width to determine target size
+      final deltaX = dragState.currentX - dragState.startX;
       
-      // 🔥 FIXED: Proper if/else logic for left vs right resize
       if (dragState.isLeftResize) {
         // LEFT RESIZE - change start day, keep original end
         final originalEnd = dragState.originalStartDay + dragState.originalDuration - 1;
