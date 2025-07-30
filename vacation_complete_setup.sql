@@ -138,14 +138,14 @@ ORDER BY ordinal_position;
 -- Step 9: Verify constraints
 SELECT '=== TABLE CONSTRAINTS ===' as info;
 SELECT 
-    constraint_name, 
-    constraint_type, 
-    column_name
+    tc.constraint_name, 
+    tc.constraint_type, 
+    ccu.column_name
 FROM information_schema.table_constraints tc
 JOIN information_schema.constraint_column_usage ccu 
     ON tc.constraint_name = ccu.constraint_name
 WHERE tc.table_name = 'vacation_absences'
-ORDER BY constraint_type, constraint_name;
+ORDER BY tc.constraint_type, tc.constraint_name;
 
 -- Step 10: Verify policies
 SELECT '=== TABLE POLICIES ===' as info;
