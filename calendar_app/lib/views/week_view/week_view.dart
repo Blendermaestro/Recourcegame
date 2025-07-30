@@ -3204,20 +3204,68 @@ class _WeekViewState extends State<WeekView> {
     
     return RepaintBoundary(
       key: ValueKey(blockKey),
-                          child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () {
-          // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
-                              _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
-          HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
+      child: Builder(
+        builder: (context) {
+          // 🎨 VISUAL STRETCH ANIMATION (doesn't affect resize logic)
+          Matrix4? visualTransform;
+          bool showResizeHighlight = false;
+          
+          if (isInResizeMode && _dragStates?[blockKey] != null) {
+            final dragState = _dragStates![blockKey]!;
+            final deltaX = dragState.currentX - dragState.startX;
+            final dayWidth = _getActualDayWidth(context);
+            showResizeHighlight = true;
+            
+            if (dragState.isLeftResize) {
+              // 🎨 LEFT RESIZE: Visual feedback for left edge dragging
+              final scaleFactor = 1.0 + (deltaX.abs() * 0.0008); // Subtle scale
+              final translateX = deltaX * 0.3; // Smooth visual movement
+              visualTransform = Matrix4.identity()
+                ..translate(translateX, 0.0)
+                ..scale(scaleFactor, 1.0);
+            } else {
+              // 🎨 RIGHT RESIZE: Visual feedback for right edge dragging  
+              final scaleFactor = 1.0 + (deltaX * 0.0015); // Stretch effect
+              visualTransform = Matrix4.identity()
+                ..scale(scaleFactor.clamp(0.5, 2.0), 1.0);
+            }
+          }
+          
+          return Transform(
+            transform: visualTransform ?? Matrix4.identity(),
+            child: Container(
+              decoration: BoxDecoration(
+                // 🎨 VISUAL HIGHLIGHT during resize
+                border: showResizeHighlight 
+                  ? Border.all(color: Colors.blue.withOpacity(0.7), width: 2)
+                  : null,
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: showResizeHighlight ? [
+                  BoxShadow(
+                    color: Colors.blue.withOpacity(0.2),
+                    blurRadius: 6.0,
+                    offset: const Offset(0, 2),
+                  ),
+                ] : null,
+              ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () {
+                  // 🔥 ONLY LONG PRESS ACTIVATES RESIZE MODE!
+                  _toggleResizeMode(employee, shiftTitle, blockStartDay, blockLane);
+                  HapticFeedback.mediumImpact(); // Haptic feedback for resize activation
+                },
+                child: isInResizeMode 
+                  ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
+                  : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
+              ),
+            ),
+          );
         },
-        child: isInResizeMode 
-          ? _buildResizeModeBlock(employee, shiftTitle, blockStartDay, blockLane)
-          : _buildDraggableBlock(employee, shiftTitle, blockStartDay, blockLane),
-                              ),
-                            );
-                          }
-                          
+      ),
+    );
+  }
+
   Widget _buildDraggableBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
     return Draggable<Employee>(
                     data: employee,
