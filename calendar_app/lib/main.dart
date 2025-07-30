@@ -7,7 +7,10 @@ import 'package:calendar_app/services/supabase_config.dart';
 import 'package:calendar_app/services/migration_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
 import 'package:calendar_app/models/user_tier.dart';
+import 'package:calendar_app/models/employee.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -120,11 +123,35 @@ class _MainNavigationViewState extends State<MainNavigationView> {
           _currentView = 'DISPLAY';
         }
       });
+      
+      // 🔥 FIX COLOR PERSISTENCE - Load custom colors on app startup
+      await _loadCustomCategoryColors();
     } catch (e) {
       setState(() {
         _isLoading = false;
         _userTier = UserTier.tier1; // Default to tier 1 on error
       });
+    }
+  }
+
+  // 🔥 LOAD CUSTOM CATEGORY COLORS ON APP STARTUP
+  Future<void> _loadCustomCategoryColors() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final colorJson = prefs.getString('custom_category_colors');
+      if (colorJson != null) {
+        final Map<String, dynamic> colorMap = json.decode(colorJson);
+        for (final entry in colorMap.entries) {
+          final category = EmployeeCategory.values.firstWhere(
+            (c) => c.name == entry.key,
+            orElse: () => EmployeeCategory.ab,
+          );
+          SharedAssignmentData.customCategoryColors[category] = Color(entry.value);
+        }
+        print('✅ Main App - Loaded custom category colors');
+      }
+    } catch (e) {
+      print('❌ Main App - Error loading category colors: $e');
     }
   }
 

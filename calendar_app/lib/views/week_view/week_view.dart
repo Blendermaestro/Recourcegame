@@ -2090,9 +2090,9 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 GRID SNAPPING CALCULATION - Match year view calculation exactly
+      // 🔥 GRID SNAPPING CALCULATION - Match display exactly
       final effectiveWidth = _getEffectiveWidth();
-      final professionColumnWidth = 50.0;
+      final professionColumnWidth = 32.0; // Match actual display width
       final containerMargins = 4.0;
       final borderWidth = 2.0;
       final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
@@ -2605,9 +2605,9 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+    // 🔥 MATCH DISPLAY CALCULATION EXACTLY
     final effectiveWidth = _getEffectiveWidth();
-    final professionColumnWidth = 50.0;
+    final professionColumnWidth = 32.0; // Match actual display width
     final containerMargins = 4.0;
     final borderWidth = 2.0;
     final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
@@ -2786,9 +2786,9 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+    // 🔥 MATCH DISPLAY CALCULATION EXACTLY
     final effectiveWidth = _getEffectiveWidth();
-    final professionColumnWidth = 50.0;
+    final professionColumnWidth = 32.0; // Match actual display width
     final containerMargins = 4.0;
     final borderWidth = 2.0;
     final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
@@ -3217,9 +3217,9 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+          // 🔥 MATCH DISPLAY CALCULATION EXACTLY
           final effectiveWidth = _getEffectiveWidth();
-          final professionColumnWidth = 50.0;
+          final professionColumnWidth = 32.0; // Match actual display width
           final containerMargins = 4.0;
           final borderWidth = 2.0;
           final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
