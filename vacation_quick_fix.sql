@@ -22,9 +22,17 @@ BEGIN
 END $$;
 
 -- Add unique constraint on vacation_id if it doesn't exist
-ALTER TABLE public.vacation_absences 
-ADD CONSTRAINT IF NOT EXISTS vacation_absences_vacation_id_unique 
-UNIQUE (vacation_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'vacation_absences_vacation_id_unique'
+    ) THEN
+        ALTER TABLE public.vacation_absences 
+        ADD CONSTRAINT vacation_absences_vacation_id_unique 
+        UNIQUE (vacation_id);
+    END IF;
+END $$;
 
 -- Enable Row Level Security
 ALTER TABLE public.vacation_absences ENABLE ROW LEVEL SECURITY;
