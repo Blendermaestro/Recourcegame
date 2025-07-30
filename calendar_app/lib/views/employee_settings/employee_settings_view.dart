@@ -517,19 +517,7 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
                     ),
                   )
                 else
-                  ...(_vacations.take(5).map((vacation) => _buildVacationItem(vacation))),
-                
-                if (_vacations.length > 5)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'ja ${_vacations.length - 5} muuta...',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
+                  ...(_vacations.map((vacation) => _buildVacationItem(vacation))),
               ],
             ),
           ),
