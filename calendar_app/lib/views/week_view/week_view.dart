@@ -2155,7 +2155,7 @@ class _WeekViewState extends State<WeekView> {
       }
       
       final relativeX = dragState.currentX - gridLeft;
-      final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
+      final targetDay = (relativeX / dayWidth).round().clamp(0, 6); // 🔥 SNAP TO NEAREST CELL
       
       // 🔥 FIXED: Proper if/else logic for left vs right resize
       if (dragState.isLeftResize) {
@@ -3244,7 +3244,7 @@ class _WeekViewState extends State<WeekView> {
           final dayWidth = _getActualDayWidth(context);
           final gridLeft = 32.0; // Profession column width
           final relativeX = localPosition.dx - gridLeft;
-          final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
+          final targetDay = (relativeX / dayWidth).round().clamp(0, 6); // 🔥 SNAP TO NEAREST CELL
           
           // Determine if resizing from left or right edge
           final blockLeft = startDay * dayWidth;
