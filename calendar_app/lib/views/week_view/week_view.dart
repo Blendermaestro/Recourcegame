@@ -112,6 +112,14 @@ class _WeekViewState extends State<WeekView> {
     _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
+    
+    // 🔥 FIX LOADING TIMING - Force a proper refresh after everything is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        SharedAssignmentData.forceRefresh();
+        setState(() {});
+      }
+    });
   }
 
   Future<void> _loadCurrentYear() async {
@@ -2082,9 +2090,14 @@ class _WeekViewState extends State<WeekView> {
       final dragState = _dragStates![blockKey];
       
       if (dragState != null) {
-      // 🔥 GRID SNAPPING CALCULATION
-      final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7;
-      final gridLeft = 40;
+      // 🔥 GRID SNAPPING CALCULATION - Match year view calculation exactly
+      final effectiveWidth = _getEffectiveWidth();
+      final professionColumnWidth = 50.0;
+      final containerMargins = 4.0;
+      final borderWidth = 2.0;
+      final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+      final dayWidth = availableGridWidth / 7;
+      final gridLeft = professionColumnWidth;
       
       // Get employee and shift info from block key (format: employeeId|shiftTitle|profession|professionRow)
       final keyParts = blockKey.split('|');
@@ -2592,7 +2605,13 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildSingleShiftCalendarGrid(String shiftTitle) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    final dayWidth = (_getEffectiveWidth() - 32 - 8) / 7; // 32px profession column + 8px margins
+    // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+    final effectiveWidth = _getEffectiveWidth();
+    final professionColumnWidth = 50.0;
+    final containerMargins = 4.0;
+    final borderWidth = 2.0;
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+    final dayWidth = availableGridWidth / 7;
     
     // Calculate total rows for current shift
     int totalRows = 0;
@@ -2767,7 +2786,13 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _buildUnifiedCalendarGrid(List<String> shiftTitles) {
     const rowHeight = 25.2; // 1.4x larger (18 * 1.4)
-    final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
+    // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+    final effectiveWidth = _getEffectiveWidth();
+    final professionColumnWidth = 50.0;
+    final containerMargins = 4.0;
+    final borderWidth = 2.0;
+    final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+    final dayWidth = availableGridWidth / 7;
     
     // Calculate total rows for both shifts
     int dayShiftRows = 0;
@@ -3192,8 +3217,14 @@ class _WeekViewState extends State<WeekView> {
         final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
         if (renderBox != null) {
           final localPosition = renderBox.globalToLocal(details.globalPosition);
-          final dayWidth = (_getEffectiveWidth() - 40 - 16 - 8) / 7; // 40px profession column + 16px scrollbar + 8px margins
-          final gridLeft = 40; // Profession column width
+          // 🔥 MATCH YEAR VIEW CALCULATION EXACTLY
+          final effectiveWidth = _getEffectiveWidth();
+          final professionColumnWidth = 50.0;
+          final containerMargins = 4.0;
+          final borderWidth = 2.0;
+          final availableGridWidth = effectiveWidth - professionColumnWidth - containerMargins - borderWidth;
+          final dayWidth = availableGridWidth / 7;
+          final gridLeft = professionColumnWidth;
           final relativeX = localPosition.dx - gridLeft;
           final targetDay = (relativeX / dayWidth).floor().clamp(0, 6);
           

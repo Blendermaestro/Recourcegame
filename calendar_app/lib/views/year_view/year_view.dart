@@ -63,6 +63,14 @@ class _YearViewState extends State<YearView> {
     // Note: YearView is read-only, assignments loaded via SharedAssignmentData listener
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
+    
+    // 🔥 FIX LOADING TIMING - Force a proper refresh after everything is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        SharedAssignmentData.forceRefresh();
+        setState(() {});
+      }
+    });
   }
   
   @override
@@ -808,6 +816,22 @@ class _YearViewState extends State<YearView> {
     return currentWeek.clamp(1, 52);
   }
 
+  // 🔥 WEEK NAVIGATION FOR PC
+  void _navigateToWeek(int weekNumber) {
+    setState(() {
+      _currentWeek = weekNumber.clamp(1, 52);
+    });
+    
+    _pageController.animateToPage(
+      _currentWeek - 1,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    
+    widget.onWeekChanged?.call(_currentWeek);
+    HapticFeedback.lightImpact();
+  }
+
   double _getEffectiveWidth() {
     final screenWidth = MediaQuery.of(context).size.width;
     return kIsWeb && screenWidth > 800 ? 800.0 : screenWidth;
@@ -914,6 +938,25 @@ class _YearViewState extends State<YearView> {
                     padding: EdgeInsets.zero,
                     tooltip: 'Go to Current Week & Year',
                   ),
+                  
+                  // 🔥 ADD WEEK NAVIGATION BUTTONS FOR PC
+                  if (kIsWeb) ...[
+                    const SizedBox(width: 4),
+                    // Previous week button
+                    IconButton(
+                      onPressed: _currentWeek > 1 ? () => _navigateToWeek(_currentWeek - 1) : null,
+                      icon: const Icon(Icons.chevron_left, size: 18, color: Colors.white),
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Previous Week',
+                    ),
+                    // Next week button  
+                    IconButton(
+                      onPressed: _currentWeek < 52 ? () => _navigateToWeek(_currentWeek + 1) : null,
+                      icon: const Icon(Icons.chevron_right, size: 18, color: Colors.white),
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Next Week',
+                    ),
+                  ],
 
                   const SizedBox(width: 8), // Reduced spacing
                   
