@@ -705,70 +705,70 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
 
   // 🔥 NEW: Build categorized employee list
   Widget _buildCategorizedEmployeeList() {
-    // Group employees by role for better organization
-    final employeesByRole = <EmployeeRole, List<Employee>>{};
+    // Group employees by CATEGORY (not role!) for better organization
+    final employeesByCategory = <EmployeeCategory, List<Employee>>{};
     
     for (final employee in _employees) {
-      employeesByRole.putIfAbsent(employee.role, () => []);
-      employeesByRole[employee.role]!.add(employee);
+      employeesByCategory.putIfAbsent(employee.category, () => []);
+      employeesByCategory[employee.category]!.add(employee);
     }
     
-    // Sort roles to put comments at the bottom
-    final sortedRoles = employeesByRole.keys.toList()..sort((a, b) {
-      if (a == EmployeeRole.kommentit) return 1;
-      if (b == EmployeeRole.kommentit) return -1;
+    // Sort categories to put comments at the bottom
+    final sortedCategories = employeesByCategory.keys.toList()..sort((a, b) {
+      if (a == EmployeeCategory.kommentit) return 1;
+      if (b == EmployeeCategory.kommentit) return -1;
       return a.name.compareTo(b.name);
     });
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: sortedRoles.map((role) {
-        final employees = employeesByRole[role]!;
-        final isCommentRole = role == EmployeeRole.kommentit;
+      children: sortedCategories.map((category) {
+        final employees = employeesByCategory[category]!;
+        final isCommentCategory = category == EmployeeCategory.kommentit;
         
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
           child: ExpansionTile(
             title: Row(
               children: [
-                Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employees.first.category),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isCommentRole ? 'Kommentit' : SharedAssignmentData.getRoleDisplayName(role),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: (isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employees.first.category)).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${employees.length}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                                 Container(
+                   width: 16,
+                   height: 16,
+                   decoration: BoxDecoration(
+                     color: isCommentCategory ? Colors.black : SharedAssignmentData.getCategoryColor(category),
+                     borderRadius: BorderRadius.circular(3),
+                   ),
+                 ),
+                 const SizedBox(width: 8),
+                 Text(
+                   _getCategoryDisplayName(category),
+                   style: const TextStyle(fontWeight: FontWeight.bold),
+                 ),
+                 const SizedBox(width: 8),
+                 Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                   decoration: BoxDecoration(
+                     color: (isCommentCategory ? Colors.black : SharedAssignmentData.getCategoryColor(category)).withOpacity(0.1),
+                     borderRadius: BorderRadius.circular(8),
+                   ),
+                   child: Text(
+                     '${employees.length}',
+                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                   ),
+                 ),
               ],
             ),
             initiallyExpanded: true,
             children: employees.map((employee) => ListTile(
               leading: CircleAvatar(
-                backgroundColor: isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employee.category),
+                backgroundColor: isCommentCategory ? Colors.black : SharedAssignmentData.getCategoryColor(employee.category),
                 child: Text(
                   employee.name.isNotEmpty ? employee.name[0].toUpperCase() : '?',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
               title: Text(employee.name),
-              subtitle: Text(isCommentRole ? 'Kommentti' : _getCategoryDisplayName(employee.category)),
+              subtitle: Text('${_getCategoryDisplayName(employee.category)} - ${SharedAssignmentData.getRoleDisplayName(employee.role)}'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
