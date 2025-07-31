@@ -64,6 +64,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeCategory.cd: false,
     EmployeeCategory.huolto: false,
     EmployeeCategory.sijainen: false,
+    EmployeeCategory.kommentit: false, // 🔥 Comments group
   };
 
   // Toggle for hiding worker section
@@ -1264,6 +1265,8 @@ class _WeekViewState extends State<WeekView> {
         return 'Huolto';
       case EmployeeCategory.sijainen:
         return 'Sijaiset';
+      case EmployeeCategory.kommentit:
+        return 'Kommentit'; // 🔥 Comments category
     }
   }
 

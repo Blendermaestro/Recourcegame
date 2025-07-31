@@ -114,7 +114,8 @@ enum EmployeeCategory {
   ab,
   cd,
   huolto,
-  sijainen;
+  sijainen,
+  kommentit; // 🔥 Comments category
 
   // Add color property to the enum
   Color get color {
@@ -127,6 +128,8 @@ enum EmployeeCategory {
         return Colors.yellow[400]!; // Light passionate yellow
       case EmployeeCategory.sijainen:
         return Colors.green[300]!; // Light passionate green
+      case EmployeeCategory.kommentit:
+        return Colors.black; // 🔥 Black for comments
     }
   }
 }

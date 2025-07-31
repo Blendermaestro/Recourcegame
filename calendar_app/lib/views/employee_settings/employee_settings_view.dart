@@ -75,12 +75,17 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
       return;
     }
 
+    // 🔥 Automatically set role based on category
+    final role = _selectedCategory == EmployeeCategory.kommentit 
+        ? EmployeeRole.kommentit 
+        : EmployeeRole.varu1;
+    
     final newEmployee = Employee(
       id: const Uuid().v4(),
       name: _nameController.text.trim(),
       category: _selectedCategory,
       type: EmployeeType.vakityontekija, // Default type
-      role: EmployeeRole.varu1, // Default role
+      role: role, // 🔥 Auto-set role based on category
       shiftCycle: ShiftCycle.a, // Default shift cycle
     );
 
@@ -214,6 +219,8 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
         return 'Huolto';
       case EmployeeCategory.sijainen:
         return 'Sijainen';
+      case EmployeeCategory.kommentit:
+        return 'Kommentit'; // 🔥 Comments category
     }
   }
 
