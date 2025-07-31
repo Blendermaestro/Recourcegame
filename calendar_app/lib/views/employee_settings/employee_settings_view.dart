@@ -418,49 +418,14 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
-                  _employees.isEmpty
+                                    _employees.isEmpty
                       ? const Card(
                           child: Padding(
                             padding: EdgeInsets.all(16.0),
                             child: Text('No employees found'),
                           ),
                         )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _employees.length,
-                          itemBuilder: (context, index) {
-                            final employee = _employees[index];
-                            return Card(
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: SharedAssignmentData.getCategoryColor(employee.category),
-                                  child: Text(
-                                    employee.name.isNotEmpty ? employee.name[0].toUpperCase() : '?',
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                title: Text(employee.name),
-                                subtitle: Text(_getCategoryDisplayName(employee.category)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.blue),
-                                      onPressed: () => _editEmployee(employee),
-                                      tooltip: 'Edit Category',
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      onPressed: () => _deleteEmployee(employee),
-                                      tooltip: 'Delete Employee',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                      : _buildCategorizedEmployeeList(),
                   const SizedBox(height: 24),
                   Text(
                     'Category Colors',
@@ -696,10 +661,20 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
       return;
     }
     
+    // Filter out comment employees from vacation system
+    final vacationEmployees = _employees.where((e) => e.role != EmployeeRole.kommentit).toList();
+    
+    if (vacationEmployees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ei työntekijöitä lomajärjestelmään!')),
+      );
+      return;
+    }
+    
     showDialog(
       context: context,
       builder: (context) => VacationDialog(
-        employees: _employees,
+        employees: vacationEmployees,
         onSave: (vacation) async {
           try {
             await VacationManager.addVacation(vacation);
@@ -718,6 +693,94 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
           }
         },
       ),
+    );
+  }
+
+  // 🔥 NEW: Build categorized employee list
+  Widget _buildCategorizedEmployeeList() {
+    // Group employees by role for better organization
+    final employeesByRole = <EmployeeRole, List<Employee>>{};
+    
+    for (final employee in _employees) {
+      employeesByRole.putIfAbsent(employee.role, () => []);
+      employeesByRole[employee.role]!.add(employee);
+    }
+    
+    // Sort roles to put comments at the bottom
+    final sortedRoles = employeesByRole.keys.toList()..sort((a, b) {
+      if (a == EmployeeRole.kommentit) return 1;
+      if (b == EmployeeRole.kommentit) return -1;
+      return a.name.compareTo(b.name);
+    });
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sortedRoles.map((role) {
+        final employees = employeesByRole[role]!;
+        final isCommentRole = role == EmployeeRole.kommentit;
+        
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: ExpansionTile(
+            title: Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employees.first.category),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isCommentRole ? 'Kommentit' : SharedAssignmentData.getRoleDisplayName(role),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employees.first.category)).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${employees.length}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            initiallyExpanded: true,
+            children: employees.map((employee) => ListTile(
+              leading: CircleAvatar(
+                backgroundColor: isCommentRole ? Colors.black : SharedAssignmentData.getCategoryColor(employee.category),
+                child: Text(
+                  employee.name.isNotEmpty ? employee.name[0].toUpperCase() : '?',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+              title: Text(employee.name),
+              subtitle: Text(isCommentRole ? 'Kommentti' : _getCategoryDisplayName(employee.category)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () => _editEmployee(employee),
+                    tooltip: 'Edit Category',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () => _deleteEmployee(employee),
+                    tooltip: 'Delete Employee',
+                  ),
+                ],
+              ),
+            )).toList(),
+          ),
+        );
+      }).toList(),
     );
   }
 

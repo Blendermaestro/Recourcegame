@@ -128,6 +128,7 @@ class SharedAssignmentData {
       case EmployeeRole.tarvike: return 'TR';
       case EmployeeRole.pora: return 'PR';
       case EmployeeRole.huolto: return 'HU';
+      case EmployeeRole.kommentit: return 'KOM';
       case EmployeeRole.custom: return 'CU';
       case EmployeeRole.slot1:
       case EmployeeRole.slot2:

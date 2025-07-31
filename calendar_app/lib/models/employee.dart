@@ -20,6 +20,7 @@ enum EmployeeRole {
   tarvike,
   pora,
   huolto,
+  kommentit, // 🔥 Comments as normal employee category
   custom,   // Special role for custom professions - HIDDEN FROM UI
   // 🔥 CONFIGURABLE PROFESSION SLOTS - Can be enabled/disabled and renamed by user
   slot1,
