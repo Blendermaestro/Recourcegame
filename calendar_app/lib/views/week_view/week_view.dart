@@ -324,6 +324,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: true,
     EmployeeRole.huolto: true,
+    EmployeeRole.kommentit: true, // 🔥 Enable comments by default
     EmployeeRole.custom: false,
   };
   
@@ -339,6 +340,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: true,
     EmployeeRole.pora: false,
     EmployeeRole.huolto: false,
+    EmployeeRole.kommentit: true, // 🔥 Enable comments by default
     EmployeeRole.custom: false,
   };
   
@@ -354,6 +356,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.kommentit: 3, // 🔥 Give comments 3 rows for flexibility
     EmployeeRole.custom: 1,
   };
   
@@ -369,6 +372,7 @@ class _WeekViewState extends State<WeekView> {
     EmployeeRole.tarvike: 1,
     EmployeeRole.pora: 1,
     EmployeeRole.huolto: 1,
+    EmployeeRole.kommentit: 3, // 🔥 Give comments 3 rows for flexibility
     EmployeeRole.custom: 1,
   };
   
@@ -1488,7 +1492,8 @@ class _WeekViewState extends State<WeekView> {
       // 🔥 FILTER PROFESSIONS: Show default professions + active slots, exclude custom and inactive slots
       final defaultProfessions = [
         EmployeeRole.tj, EmployeeRole.varu1, EmployeeRole.varu2, EmployeeRole.varu3, EmployeeRole.varu4,
-        EmployeeRole.pasta1, EmployeeRole.pasta2, EmployeeRole.ict, EmployeeRole.tarvike, EmployeeRole.pora, EmployeeRole.huolto
+        EmployeeRole.pasta1, EmployeeRole.pasta2, EmployeeRole.ict, EmployeeRole.tarvike, EmployeeRole.pora, EmployeeRole.huolto,
+        EmployeeRole.kommentit // 🔥 Include comments in profession settings
       ];
       final slotProfessions = [EmployeeRole.slot1, EmployeeRole.slot2, EmployeeRole.slot3, EmployeeRole.slot4, EmployeeRole.slot5,
                               EmployeeRole.slot6, EmployeeRole.slot7, EmployeeRole.slot8, EmployeeRole.slot9, EmployeeRole.slot10];
