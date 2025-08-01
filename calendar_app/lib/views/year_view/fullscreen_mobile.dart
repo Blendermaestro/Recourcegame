@@ -12,9 +12,9 @@ void toggleFullscreen() {
     );
     _isImmersive = false;
   } else {
-    // Enter immersive mode
+    // Enter immersive mode (less sensitive than immersiveSticky)
     SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.immersiveSticky,
+      SystemUiMode.immersive,
       overlays: [],
     );
     _isImmersive = true;

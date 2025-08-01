@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:calendar_app/models/employee.dart';
 import 'package:calendar_app/services/shared_data_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
@@ -337,6 +338,12 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
     Color(0xFFE0E0E0), Color(0xFFBDBDBD), Color(0xFF9E9E9E), Color(0xFF757575), Color(0xFF616161),
   ];
 
+  // Calculate calendar-matching width
+  double _getEffectiveWidth() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return kIsWeb && screenWidth > 800 ? 800.0 : screenWidth;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -347,11 +354,14 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+          : Center(
+              child: Container(
+                width: _getEffectiveWidth(),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                   // 🔥 NEW: Vacation Management Section
                   _buildVacationSection(),
                   const SizedBox(height: 20),
@@ -494,6 +504,8 @@ class _EmployeeSettingsViewState extends State<EmployeeSettingsView> {
                 ],
               ),
             ),
+          ),
+        ),
     );
   }
 

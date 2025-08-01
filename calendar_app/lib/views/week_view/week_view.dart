@@ -1318,37 +1318,44 @@ class _WeekViewState extends State<WeekView> {
         builder: (context) {
           return StatefulBuilder(
             builder: (context, setDialogState) {
-              return Dialog.fullscreen(
-                child: Scaffold(
-                  appBar: AppBar(
-                    title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.white)),
-                    backgroundColor: const Color(0xFF253237),
-                    foregroundColor: Colors.white,
-                  ),
-                  body: Container(
-                    padding: const EdgeInsets.all(16),
-                  child: DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        const TabBar(
-                          labelColor: Colors.black87,
-                          unselectedLabelColor: Colors.black54,
-                          tabs: [
-                            Tab(text: 'Day Shift'),
-                            Tab(text: 'Night Shift'),
+              // Use calendar width for consistent sizing
+              final calendarWidth = _getEffectiveWidth();
+              
+              return Dialog(
+                child: Container(
+                  width: calendarWidth,
+                  height: MediaQuery.of(context).size.height * 0.8,
+                  child: Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Profession Settings', style: TextStyle(fontSize: 16, color: Colors.white)),
+                      backgroundColor: const Color(0xFF253237),
+                      foregroundColor: Colors.white,
+                    ),
+                    body: Container(
+                      padding: const EdgeInsets.all(16),
+                      child: DefaultTabController(
+                        length: 2,
+                        child: Column(
+                          children: [
+                            const TabBar(
+                              labelColor: Colors.black87,
+                              unselectedLabelColor: Colors.black54,
+                              tabs: [
+                                Tab(text: 'Day Shift'),
+                                Tab(text: 'Night Shift'),
+                              ],
+                            ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  _buildProfessionSettings(setDialogState, true),
+                                  _buildProfessionSettings(setDialogState, false),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              _buildProfessionSettings(setDialogState, true),
-                              _buildProfessionSettings(setDialogState, false),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
                     ),
                   ),
                 ),
