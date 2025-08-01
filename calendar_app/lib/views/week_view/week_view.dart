@@ -72,7 +72,7 @@ class _WeekViewState extends State<WeekView> {
   
   // 🔒 WEEK LOCK SYSTEM
   bool _isWeekLocked = false;
-  static const String _lockPassword = "locked123"; // Lock password
+  static const String _lockPassword = "locked123";
   
   // Current year for display
   int _currentYear = 2025;
@@ -123,10 +123,10 @@ class _WeekViewState extends State<WeekView> {
     _loadCustomProfessions(); // Load custom professions first
     _loadProfessionNames(); // Load custom profession names
     _loadEmployees();
-    _loadWeekLockState(); // 🔒 Load lock state for this week
     _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
+    _loadWeekLockState(); // 🔒 Load lock state for this week
     
     // 🔥 FIX LOADING TIMING - Force a proper refresh after everything is loaded
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -209,6 +209,9 @@ class _WeekViewState extends State<WeekView> {
       // Preload assignments for new week
       _loadAssignments(forceReload: true);
       _loadProfessionSettings();
+      
+      // 🔒 RELOAD LOCK STATE when week number changes
+      _loadWeekLockState();
     }
   }
   
@@ -4462,12 +4465,17 @@ class _WeekViewState extends State<WeekView> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lockKey = 'week_locked_${widget.weekNumber}';
-      setState(() {
-        _isWeekLocked = prefs.getBool(lockKey) ?? false;
-      });
-      print('WeekView: Loaded lock state for week ${widget.weekNumber}: $_isWeekLocked');
+      final isLocked = prefs.getBool(lockKey) ?? false;
+      
+      if (mounted) {
+        setState(() {
+          _isWeekLocked = isLocked;
+        });
+      }
+      
+      print('WeekView: 🔒 Loaded lock state for week ${widget.weekNumber}: $_isWeekLocked');
     } catch (e) {
-      print('WeekView: Error loading lock state: $e');
+      print('WeekView: ❌ Error loading lock state: $e');
     }
   }
 
@@ -4477,9 +4485,9 @@ class _WeekViewState extends State<WeekView> {
       final prefs = await SharedPreferences.getInstance();
       final lockKey = 'week_locked_${widget.weekNumber}';
       await prefs.setBool(lockKey, _isWeekLocked);
-      print('WeekView: Saved lock state for week ${widget.weekNumber}: $_isWeekLocked');
+      print('WeekView: 🔒 Saved lock state for week ${widget.weekNumber}: $_isWeekLocked');
     } catch (e) {
-      print('WeekView: Error saving lock state: $e');
+      print('WeekView: ❌ Error saving lock state: $e');
     }
   }
 
@@ -4520,11 +4528,11 @@ class _WeekViewState extends State<WeekView> {
                 ),
               ),
               onChanged: (value) => enteredPassword = value,
-              onSubmitted: (value) {
-                if (value == _lockPassword) {
-                  Navigator.of(context).pop(true);
-                }
-              },
+                             onSubmitted: (value) {
+                 if (value == _lockPassword) {
+                   Navigator.of(context).pop(true);
+                 }
+               },
             ),
           ],
         ),
@@ -4534,10 +4542,10 @@ class _WeekViewState extends State<WeekView> {
             child: const Text('Peruuta', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () {
-              if (enteredPassword == _lockPassword) {
-                Navigator.of(context).pop(true);
-              } else {
+                         onPressed: () {
+               if (enteredPassword == _lockPassword) {
+                 Navigator.of(context).pop(true);
+               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Väärä salasana!'),
@@ -4558,23 +4566,25 @@ class _WeekViewState extends State<WeekView> {
       ),
     );
 
-    if (result == true) {
-      setState(() {
-        _isWeekLocked = isLocking;
-      });
-      await _saveWeekLockState();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isLocking 
-              ? 'Viikko ${widget.weekNumber} lukittu ✅'
-              : 'Viikko ${widget.weekNumber} avattu ✅',
-          ),
-          backgroundColor: isLocking ? Colors.red : Colors.green,
-        ),
-      );
-    }
+         if (result == true) {
+       setState(() {
+         _isWeekLocked = isLocking;
+       });
+       await _saveWeekLockState();
+       
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+             content: Text(
+               isLocking 
+                 ? 'Viikko ${widget.weekNumber} lukittu ✅'
+                 : 'Viikko ${widget.weekNumber} avattu ✅',
+             ),
+             backgroundColor: isLocking ? Colors.red : Colors.green,
+           ),
+         );
+       }
+     }
   }
 
 } 
