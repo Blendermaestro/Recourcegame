@@ -2811,49 +2811,61 @@ class _WeekViewState extends State<WeekView> {
         // 🔒 ADD LOCK/UNLOCK BUTTONS AT THE END
         allGroupWidgets.add(const SizedBox(height: 20));
         allGroupWidgets.add(
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _isWeekLocked ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _isWeekLocked ? Colors.red : Colors.green,
-                width: 2,
-              ),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  _isWeekLocked ? Icons.lock : Icons.lock_open,
-                  color: _isWeekLocked ? Colors.red : Colors.green,
-                  size: 32,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _isWeekLocked ? 'VIIKKO LUKITTU' : 'Viikko avoinna',
-                  style: TextStyle(
-                    color: _isWeekLocked ? Colors.red : Colors.green,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showPasswordDialog(!_isWeekLocked),
-                    icon: Icon(_isWeekLocked ? Icons.lock_open : Icons.lock),
-                    label: Text(_isWeekLocked ? 'Avaa viikko' : 'Lukitse viikko'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isWeekLocked ? Colors.green : Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+          Row(
+            children: [
+              // Lock button - same width as employee cards (3/5 space)
+              Expanded(
+                flex: 3,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _isWeekLocked ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isWeekLocked ? Colors.red : Colors.green,
+                      width: 2,
                     ),
                   ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        _isWeekLocked ? Icons.lock : Icons.lock_open,
+                        color: _isWeekLocked ? Colors.red : Colors.green,
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isWeekLocked ? 'VIIKKO LUKITTU' : 'Viikko avoinna',
+                        style: TextStyle(
+                          color: _isWeekLocked ? Colors.red : Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showPasswordDialog(!_isWeekLocked),
+                          icon: Icon(_isWeekLocked ? Icons.lock_open : Icons.lock),
+                          label: Text(_isWeekLocked ? 'Avaa viikko' : 'Lukitse viikko'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isWeekLocked ? Colors.green : Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              // Right space for scrolling - same as employee cards (2/5 space)
+              Expanded(
+                flex: 2,
+                child: Container(), // Empty space for scrolling
+              ),
+            ],
           ),
         );
         
