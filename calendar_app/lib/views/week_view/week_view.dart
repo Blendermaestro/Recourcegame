@@ -70,6 +70,10 @@ class _WeekViewState extends State<WeekView> {
   // Toggle for hiding worker section
   bool _showWorkerSection = true;
   
+  // 🔒 WEEK LOCK SYSTEM
+  bool _isWeekLocked = false;
+  static const String _lockPassword = "locked123"; // Lock password
+  
   // Current year for display
   int _currentYear = 2025;
   
@@ -119,6 +123,7 @@ class _WeekViewState extends State<WeekView> {
     _loadCustomProfessions(); // Load custom professions first
     _loadProfessionNames(); // Load custom profession names
     _loadEmployees();
+    _loadWeekLockState(); // 🔒 Load lock state for this week
     _loadAssignments(); // LOAD ASSIGNMENTS FROM SUPABASE
     _loadProfessionSettings(); // LOAD GLOBAL PROFESSION SETTINGS
     VacationManager.loadVacations(); // Load vacation data
@@ -406,6 +411,17 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _handleDropToLane(Employee employee, int dayIndex, String shiftTitle, int lane) {
+    // 🔒 CHECK IF WEEK IS LOCKED
+    if (_isWeekLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Viikko on lukittu! Avaa viikko muokataksesi.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     // 🔥 CONVERT ABSOLUTE LANE TO PROFESSION + ROW (NO MORE MISALIGNMENT!)
     final professionInfo = _getAbsoluteLaneToProfession(lane, shiftTitle);
     if (professionInfo == null) return; // Invalid lane
@@ -2494,33 +2510,162 @@ class _WeekViewState extends State<WeekView> {
                          // Employee card - 20% shorter to match headers
                          Expanded(
                            flex: 3, // Takes 3/5 of the space (20% shorter)
-                           child: Draggable<Employee>(
-                             data: employee,
-                             feedback: Material(
-                               child: Container(
-                                 width: 120,
-                                 height: 25.2,
-                                 padding: const EdgeInsets.all(2),
+                           child: _isWeekLocked 
+                             ? Container(
                                  decoration: BoxDecoration(
-                                   color: _getCategoryColor(category),
-                                   border: Border.all(color: const Color(0xFF253237), width: 1), // Gunmetal border
-                                   borderRadius: BorderRadius.circular(2),
+                                   color: (totalDays == 0 ? Colors.white : 
+                                          totalDays >= 7 ? const Color(0xFFC2DFE3) : const Color(0xFFE0FBFC)).withOpacity(0.5), 
+                                   border: Border.all(color: _getCategoryColor(category).withOpacity(0.5), width: 1),
+                                   borderRadius: BorderRadius.circular(3),
                                  ),
-                                 child: Center(
-                                   child: Text(
-                                     employee.name,
-                                     style: TextStyle(
-                                       color: _getTextColorForCategory(category), // Dynamic text color based on background
-                                       fontSize: 10,
-                                       fontWeight: FontWeight.w600,
+                                 child: Stack(
+                                   children: [
+                                     Center(
+                                       child: Padding(
+                                         padding: const EdgeInsets.symmetric(horizontal: 2),
+                                         child: Row(
+                                           mainAxisAlignment: MainAxisAlignment.center,
+                                           children: [
+                                             Flexible(
+                                               child: Text(
+                                                 employee.name,
+                                                 style: TextStyle(
+                                                   fontSize: 10,
+                                                   color: const Color(0xFF253237).withOpacity(0.6), // Dimmed when locked
+                                                   fontWeight: FontWeight.w600,
+                                                 ),
+                                                 textAlign: TextAlign.center,
+                                                 overflow: TextOverflow.ellipsis,
+                                               ),
+                                             ),
+                                             // Show vacation status inline
+                                             () {
+                                               // Get dates for the DISPLAYED week (not current week)
+                                               final weekDates = _getDatesForWeek(widget.weekNumber);
+                                               final weekStart = weekDates.first;
+                                               final weekEnd = weekDates.last;
+                                               
+                                                                                               // Check if employee has ANY vacation in this week
+                                                final hasVacation = VacationManager.getEmployeeVacations(employee.id)
+                                                    .any((vacation) => vacation.startDate.isBefore(weekEnd.add(const Duration(days: 1))) && 
+                                                                      vacation.endDate.isAfter(weekStart.subtract(const Duration(days: 1))));
+                                               
+                                               if (hasVacation) {
+                                                 return Container(
+                                                   margin: const EdgeInsets.only(left: 2),
+                                                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                                                   decoration: BoxDecoration(
+                                                     color: const Color(0xFF9DB4C0).withOpacity(0.5), // Dimmed vacation indicator
+                                                     borderRadius: BorderRadius.circular(4),
+                                                   ),
+                                                   child: const Text(
+                                                     'L',
+                                                     style: TextStyle(
+                                                       fontSize: 6,
+                                                       color: Colors.white,
+                                                       fontWeight: FontWeight.bold,
+                                                     ),
+                                                   ),
+                                                 );
+                                               }
+                                               return const SizedBox.shrink();
+                                             }(),
+                                           ],
+                                         ),
+                                       ),
                                      ),
-                                     textAlign: TextAlign.center,
-                                     overflow: TextOverflow.ellipsis,
+                                     // Show allocation count (dimmed)
+                                     if (totalDays > 0)
+                                       Positioned(
+                                         right: 1,
+                                         top: 1,
+                                         child: Container(
+                                           padding: const EdgeInsets.all(1),
+                                           decoration: BoxDecoration(
+                                             color: (totalDays >= 7 ? const Color(0xFF5C6B73) : const Color(0xFF253237)).withOpacity(0.5),
+                                             borderRadius: BorderRadius.circular(6),
+                                           ),
+                                           child: Text(
+                                             '$totalDays',
+                                             style: const TextStyle(
+                                               fontSize: 6,
+                                               color: Colors.white70,
+                                               fontWeight: FontWeight.bold,
+                                             ),
+                                           ),
+                                         ),
+                                       ),
+                                     // Show day/night indicator (dimmed)
+                                     if (dayAllocation > 0 || nightAllocation > 0)
+                                       Positioned(
+                                         left: 1,
+                                         bottom: 1,
+                                         child: Row(
+                                           mainAxisSize: MainAxisSize.min,
+                                           children: [
+                                             if (dayAllocation > 0)
+                                               Container(
+                                                 width: 4,
+                                                 height: 4,
+                                                 decoration: BoxDecoration(
+                                                   color: const Color(0xFFC2DFE3).withOpacity(0.5), // Dimmed day indicator
+                                                   shape: BoxShape.circle,
+                                                 ),
+                                               ),
+                                             if (dayAllocation > 0 && nightAllocation > 0)
+                                               const SizedBox(width: 1),
+                                             if (nightAllocation > 0)
+                                               Container(
+                                                 width: 4,
+                                                 height: 4,
+                                                 decoration: BoxDecoration(
+                                                   color: const Color(0xFF5C6B73).withOpacity(0.5), // Dimmed night indicator
+                                                   shape: BoxShape.circle,
+                                                 ),
+                                               ),
+                                           ],
+                                         ),
+                                       ),
+                                     // Lock icon overlay for locked state
+                                     Positioned(
+                                       right: 2,
+                                       bottom: 2,
+                                       child: Icon(
+                                         Icons.lock,
+                                         size: 8,
+                                         color: Colors.red.withOpacity(0.7),
+                                       ),
+                                     ),
+                                   ],
+                                 ),
+                               )
+                             : Draggable<Employee>(
+                                 data: employee,
+                                 feedback: Material(
+                                   child: Container(
+                                     width: 120,
+                                     height: 25.2,
+                                     padding: const EdgeInsets.all(2),
+                                     decoration: BoxDecoration(
+                                       color: _getCategoryColor(category),
+                                       border: Border.all(color: const Color(0xFF253237), width: 1), // Gunmetal border
+                                       borderRadius: BorderRadius.circular(2),
+                                     ),
+                                     child: Center(
+                                       child: Text(
+                                         employee.name,
+                                         style: TextStyle(
+                                           color: _getTextColorForCategory(category), // Dynamic text color based on background
+                                           fontSize: 10,
+                                           fontWeight: FontWeight.w600,
+                                         ),
+                                         textAlign: TextAlign.center,
+                                         overflow: TextOverflow.ellipsis,
+                                       ),
+                                     ),
                                    ),
                                  ),
-                               ),
-                             ),
-                             child: Container(
+                                 child: Container(
                                decoration: BoxDecoration(
                                  color: totalDays == 0 ? Colors.white : 
                                         totalDays >= 7 ? const Color(0xFFC2DFE3) : const Color(0xFFE0FBFC), // White/Light blue/Light cyan
@@ -2659,6 +2804,55 @@ class _WeekViewState extends State<WeekView> {
             }
           }
         }
+        
+        // 🔒 ADD LOCK/UNLOCK BUTTONS AT THE END
+        allGroupWidgets.add(const SizedBox(height: 20));
+        allGroupWidgets.add(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _isWeekLocked ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _isWeekLocked ? Colors.red : Colors.green,
+                width: 2,
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  _isWeekLocked ? Icons.lock : Icons.lock_open,
+                  color: _isWeekLocked ? Colors.red : Colors.green,
+                  size: 32,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _isWeekLocked ? 'VIIKKO LUKITTU' : 'Viikko avoinna',
+                  style: TextStyle(
+                    color: _isWeekLocked ? Colors.red : Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showPasswordDialog(!_isWeekLocked),
+                    icon: Icon(_isWeekLocked ? Icons.lock_open : Icons.lock),
+                    label: Text(_isWeekLocked ? 'Avaa viikko' : 'Lukitse viikko'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isWeekLocked ? Colors.green : Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
         
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -3249,6 +3443,43 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _buildDraggableBlock(Employee employee, String shiftTitle, int blockStartDay, int blockLane) {
+    // 🔒 CHECK IF WEEK IS LOCKED - Return non-draggable widget
+    if (_isWeekLocked) {
+      return Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: SharedAssignmentData.getCategoryColor(employee.category).withOpacity(0.5),
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: const Color(0xFF253237).withOpacity(0.3), width: 1),
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: Text(
+                employee.name,
+                style: TextStyle(
+                  color: const Color(0xFF253237).withOpacity(0.6),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Icon(
+                Icons.lock,
+                size: 8,
+                color: Colors.red.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
     return Draggable<Employee>(
                     data: employee,
                     onDragStarted: () {
@@ -3688,8 +3919,62 @@ class _WeekViewState extends State<WeekView> {
               Container(
                 height: _calculateCalendarHeight(),
                 margin: const EdgeInsets.fromLTRB(2, 0, 2, 0), // No top margin
-              child: _buildUnifiedShiftView(shiftTitles),
-          ),
+                child: Stack(
+                  children: [
+                    // Original calendar content
+                    _buildUnifiedShiftView(shiftTitles),
+                    
+                    // 🔒 LOCK OVERLAY
+                    if (_isWeekLocked)
+                      Container(
+                        color: Colors.black.withOpacity(0.3),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.lock,
+                                  color: Colors.white,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'VALMIS, LUKITTU',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Viikko ${widget.weekNumber}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
 
           // Show workers button when section is hidden
           if (!_showWorkerSection) Container(
@@ -4170,6 +4455,126 @@ class _WeekViewState extends State<WeekView> {
       }
     }
     return 0;
+  }
+
+  // 🔒 LOAD WEEK LOCK STATE
+  Future<void> _loadWeekLockState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lockKey = 'week_locked_${widget.weekNumber}';
+      setState(() {
+        _isWeekLocked = prefs.getBool(lockKey) ?? false;
+      });
+      print('WeekView: Loaded lock state for week ${widget.weekNumber}: $_isWeekLocked');
+    } catch (e) {
+      print('WeekView: Error loading lock state: $e');
+    }
+  }
+
+  // 🔒 SAVE WEEK LOCK STATE
+  Future<void> _saveWeekLockState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lockKey = 'week_locked_${widget.weekNumber}';
+      await prefs.setBool(lockKey, _isWeekLocked);
+      print('WeekView: Saved lock state for week ${widget.weekNumber}: $_isWeekLocked');
+    } catch (e) {
+      print('WeekView: Error saving lock state: $e');
+    }
+  }
+
+  // 🔒 SHOW PASSWORD DIALOG
+  Future<void> _showPasswordDialog(bool isLocking) async {
+    String enteredPassword = '';
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF253237),
+        title: Text(
+          isLocking ? 'Lukitse viikko ${widget.weekNumber}' : 'Avaa viikko ${widget.weekNumber}',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isLocking 
+                ? 'Syötä salasana lukitaksesi viikon. Lukittu viikko ei ole muokattavissa.'
+                : 'Syötä salasana avataksesi viikon muokkausta varten.',
+              style: TextStyle(color: Colors.white.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              obscureText: true,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Salasana',
+                labelStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white),
+                ),
+              ),
+              onChanged: (value) => enteredPassword = value,
+              onSubmitted: (value) {
+                if (value == _lockPassword) {
+                  Navigator.of(context).pop(true);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Peruuta', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (enteredPassword == _lockPassword) {
+                Navigator.of(context).pop(true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Väärä salasana!'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isLocking ? Colors.red : Colors.green,
+            ),
+            child: Text(
+              isLocking ? 'Lukitse' : 'Avaa',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      setState(() {
+        _isWeekLocked = isLocking;
+      });
+      await _saveWeekLockState();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isLocking 
+              ? 'Viikko ${widget.weekNumber} lukittu ✅'
+              : 'Viikko ${widget.weekNumber} avattu ✅',
+          ),
+          backgroundColor: isLocking ? Colors.red : Colors.green,
+        ),
+      );
+    }
   }
 
 } 
