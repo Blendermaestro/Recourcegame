@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:calendar_app/services/shared_data_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/services/shared_data_fix_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -1123,8 +1124,8 @@ class _WeekViewState extends State<WeekView> {
   // SAVE PROFESSION SETTINGS GLOBALLY TOO
   Future<void> _saveProfessionSettings() async {
     try {
-      // 🔥 100% SUPABASE STORAGE - No local fallback
-      await SharedDataService.saveProfessionSettings(
+      // 🔥 SHARED DATA - Use shared profession settings for multi-user sync
+      await SharedDataFixService.saveSharedProfessionSettings(
         weekNumber: widget.weekNumber,
         dayProfessions: _dayShiftProfessions,
         nightProfessions: _nightShiftProfessions,
@@ -1132,20 +1133,20 @@ class _WeekViewState extends State<WeekView> {
         nightRows: _nightShiftRows,
       );
       
-      print('WeekView: ✅ Saved profession settings to Supabase for week ${widget.weekNumber}');
+      print('WeekView: ✅ Saved shared profession settings for week ${widget.weekNumber}');
       
       // Notify other views that profession settings have changed
       SharedAssignmentData.forceRefresh();
     } catch (e) {
-      print('WeekView: ❌ Error saving profession settings: $e');
+      print('WeekView: ❌ Error saving shared profession settings: $e');
       rethrow;
     }
   }
 
   Future<void> _loadProfessionSettings() async {
     try {
-      // 🔥 100% SUPABASE STORAGE - No local fallback
-      final supabaseData = await SharedDataService.loadProfessionSettings(widget.weekNumber);
+      // 🔥 SHARED DATA - Load shared profession settings for multi-user sync
+      final supabaseData = await SharedDataFixService.loadSharedProfessionSettings(widget.weekNumber);
       
       if (supabaseData.isNotEmpty) {
         final dayProfessions = supabaseData['dayProfessions'] as Map<EmployeeRole, bool>?;
@@ -1166,10 +1167,10 @@ class _WeekViewState extends State<WeekView> {
           _weekNightShiftRows[widget.weekNumber] = Map.from(nightRows);
         }
         
-        print('WeekView: ✅ Loaded profession settings from Supabase for week ${widget.weekNumber}');
+        print('WeekView: ✅ Loaded shared profession settings for week ${widget.weekNumber}');
       } else {
-        // No settings found in Supabase, use defaults
-        print('WeekView: No settings found in Supabase, using defaults for week ${widget.weekNumber}');
+        // No settings found, use defaults
+        print('WeekView: No shared settings found, using defaults for week ${widget.weekNumber}');
         _setDefaultProfessionSettings();
       }
       
@@ -1179,7 +1180,7 @@ class _WeekViewState extends State<WeekView> {
       }
       
     } catch (e) {
-      print('WeekView: ❌ Error loading profession settings from Supabase: $e');
+      print('WeekView: ❌ Error loading shared profession settings: $e');
       _setDefaultProfessionSettings();
       if (mounted) {
         setState(() {});
@@ -4472,12 +4473,10 @@ class _WeekViewState extends State<WeekView> {
     return 0;
   }
 
-  // 🔒 LOAD WEEK LOCK STATE
+  // 🔒 LOAD WEEK LOCK STATE FROM SHARED DATABASE
   Future<void> _loadWeekLockState() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final lockKey = 'week_locked_${widget.weekNumber}';
-      final isLocked = prefs.getBool(lockKey) ?? false;
+      final isLocked = await SharedDataFixService.loadWeekLockState(widget.weekNumber);
       
       if (mounted) {
         setState(() {
@@ -4485,21 +4484,29 @@ class _WeekViewState extends State<WeekView> {
         });
       }
       
-      print('WeekView: 🔒 Loaded lock state for week ${widget.weekNumber}: $_isWeekLocked');
+      print('WeekView: 🔒 Loaded shared lock state for week ${widget.weekNumber}: $_isWeekLocked');
     } catch (e) {
-      print('WeekView: ❌ Error loading lock state: $e');
+      print('WeekView: ❌ Error loading shared lock state: $e');
+      // Fallback to unlocked state
+      if (mounted) {
+        setState(() {
+          _isWeekLocked = false;
+        });
+      }
     }
   }
 
-  // 🔒 SAVE WEEK LOCK STATE
+  // 🔒 SAVE WEEK LOCK STATE TO SHARED DATABASE
   Future<void> _saveWeekLockState() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final lockKey = 'week_locked_${widget.weekNumber}';
-      await prefs.setBool(lockKey, _isWeekLocked);
-      print('WeekView: 🔒 Saved lock state for week ${widget.weekNumber}: $_isWeekLocked');
+      await SharedDataFixService.saveWeekLockState(widget.weekNumber, _isWeekLocked);
+      
+      print('WeekView: 🔒 Saved shared lock state for week ${widget.weekNumber}: $_isWeekLocked');
+      
+      // Notify other users of the change
+      SharedAssignmentData.forceRefresh();
     } catch (e) {
-      print('WeekView: ❌ Error saving lock state: $e');
+      print('WeekView: ❌ Error saving shared lock state: $e');
     }
   }
 
