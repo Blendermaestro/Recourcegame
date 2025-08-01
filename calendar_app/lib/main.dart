@@ -180,6 +180,92 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     }
   }
 
+  // 🚀 MASS PRELOADING - Load data for ~3 months around current week
+  Future<void> _startMassPreloading() async {
+    setState(() {
+      _isPreloading = true;
+      _loadingMessage = 'Preloading calendar data...';
+    });
+    
+    try {
+      // Check if we already have enough data cached
+      final cachedCount = PreloadingService.getCachedWeeksCount(_currentWeek);
+      final totalCount = PreloadingService.getTotalWeeksToCache(_currentWeek);
+      
+      if (cachedCount >= totalCount - 2) {
+        // Most data already cached, skip preloading
+        setState(() {
+          _loadingMessage = 'Using cached data...';
+          _preloadProgress = 1.0;
+        });
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        // Start mass preloading with progress updates
+        await for (final progress in PreloadingService.preloadAroundCurrentWeek(_currentWeek)) {
+          if (mounted) {
+            setState(() {
+              _preloadProgress = progress;
+              final percentage = (progress * 100).round();
+              _loadingMessage = 'Loading calendar data... $percentage%';
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('MainNavigationView: Preloading error (non-critical): $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isPreloading = false;
+        });
+      }
+    }
+  }
+
+  // 🚀 MASS PRELOADING - Load data for ~3 months around current week
+  Future<void> _startMassPreloading() async {
+    setState(() {
+      _isPreloading = true;
+      _loadingMessage = 'Preloading calendar data...';
+    });
+    
+    try {
+      // Check if we already have enough data cached
+      final cachedCount = PreloadingService.getCachedWeeksCount(_currentWeek);
+      final totalCount = PreloadingService.getTotalWeeksToCache(_currentWeek);
+      
+      if (cachedCount >= totalCount - 2) {
+        // Most data already cached, skip preloading
+        setState(() {
+          _loadingMessage = 'Using cached data...';
+          _preloadProgress = 1.0;
+        });
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        // Start mass preloading with progress updates
+        await for (final progress in PreloadingService.preloadAroundCurrentWeek(_currentWeek)) {
+          if (mounted) {
+            setState(() {
+              _preloadProgress = progress;
+              final percentage = (progress * 100).round();
+              _loadingMessage = 'Loading calendar data... $percentage%';
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('MainNavigationView: Preloading error (non-critical): $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isPreloading = false;
+        });
+      }
+    }
+  }
+
   void _handleViewChange(String newView) {
     // Prevent Tier 2 users from accessing edit mode
     if (_userTier == UserTier.tier2 && newView == 'EDIT') {
