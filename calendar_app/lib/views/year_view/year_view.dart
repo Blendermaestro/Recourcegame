@@ -209,8 +209,8 @@ class _YearViewState extends State<YearView> {
     
     _pageController.animateToPage(
       _currentWeek - 1,
-      duration: const Duration(milliseconds: 250), // Slightly faster for snappier feel
-      curve: Curves.easeOutCubic, // Smoother deceleration
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
     );
     
     widget.onWeekChanged?.call(_currentWeek);
@@ -1082,7 +1082,7 @@ class _YearViewState extends State<YearView> {
                   },
                   child: PageView.builder(
                     controller: _pageController,
-                    physics: const BouncingScrollPhysics(decelerationRate: ScrollDecelerationRate.fast), // Smoother transitions
+                    physics: const BouncingScrollPhysics(), // Better for PC scrolling
                     onPageChanged: (index) {
                       final newWeek = index + 1;
                       setState(() {

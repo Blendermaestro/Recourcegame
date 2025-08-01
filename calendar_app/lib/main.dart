@@ -6,6 +6,7 @@ import 'package:calendar_app/services/auth_service.dart';
 import 'package:calendar_app/services/supabase_config.dart';
 import 'package:calendar_app/services/migration_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/services/preloading_service.dart';
 import 'package:calendar_app/models/user_tier.dart';
 import 'package:calendar_app/models/employee.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -93,6 +94,11 @@ class _MainNavigationViewState extends State<MainNavigationView> {
   int _currentWeek = 1;
   UserTier _userTier = UserTier.tier1;
   bool _isLoading = true;
+  
+  // 🚀 MASS PRELOADING STATE
+  double _preloadProgress = 0.0;
+  String _loadingMessage = 'Loading user permissions...';
+  bool _isPreloading = false;
 
   @override
   void initState() {
@@ -266,49 +272,6 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     }
   }
 
-  // 🚀 MASS PRELOADING - Load data for ~3 months around current week
-  Future<void> _startMassPreloading() async {
-    setState(() {
-      _isPreloading = true;
-      _loadingMessage = 'Preloading calendar data...';
-    });
-    
-    try {
-      // Check if we already have enough data cached
-      final cachedCount = PreloadingService.getCachedWeeksCount(_currentWeek);
-      final totalCount = PreloadingService.getTotalWeeksToCache(_currentWeek);
-      
-      if (cachedCount >= totalCount - 2) {
-        // Most data already cached, skip preloading
-        setState(() {
-          _loadingMessage = 'Using cached data...';
-          _preloadProgress = 1.0;
-        });
-        await Future.delayed(const Duration(milliseconds: 500));
-      } else {
-        // Start mass preloading with progress updates
-        await for (final progress in PreloadingService.preloadAroundCurrentWeek(_currentWeek)) {
-          if (mounted) {
-            setState(() {
-              _preloadProgress = progress;
-              final percentage = (progress * 100).round();
-              _loadingMessage = 'Loading calendar data... $percentage%';
-            });
-          }
-        }
-      }
-    } catch (e) {
-      print('MainNavigationView: Preloading error (non-critical): $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _isPreloading = false;
-        });
-      }
-    }
-  }
-
   void _handleViewChange(String newView) {
     // Prevent Tier 2 users from accessing edit mode
     if (_userTier == UserTier.tier2 && newView == 'EDIT') {
@@ -351,15 +314,38 @@ class _MainNavigationViewState extends State<MainNavigationView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(color: Colors.white),
+              // 🚀 PROGRESS INDICATOR - Show progress for preloading
+              if (_isPreloading && _preloadProgress > 0)
+                Container(
+                  width: 200,
+                  height: 6,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: LinearProgressIndicator(
+                    value: _preloadProgress,
+                    backgroundColor: Colors.white24,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              else
+                const CircularProgressIndicator(color: Colors.white),
               const SizedBox(height: 16),
               Text(
-                'Loading user permissions...',
+                _loadingMessage,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                 ),
+                textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 8),
+              if (_isPreloading)
+                Text(
+                  'Preparing for smooth navigation...',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
             ],
           ),
         ),
