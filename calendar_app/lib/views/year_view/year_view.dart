@@ -40,6 +40,9 @@ class _YearViewState extends State<YearView> {
   int _selectedYear = 2025; // Default year, can be changed
   UserTier _userTier = UserTier.tier1;
   
+  // 🔥 PREVENT LOADING CONFLICTS
+  final Set<int> _loadingWeeks = <int>{};
+  
   // 🔥 SHARED DATA - Use truly shared data class with year awareness
   Map<String, Employee> get _assignments => SharedAssignmentData.getAssignmentsForYear(_selectedYear);
   Map<int, Map<EmployeeRole, bool>> get _weekDayShiftProfessions => SharedAssignmentData.weekDayShiftProfessions;
@@ -100,12 +103,6 @@ class _YearViewState extends State<YearView> {
     if (mounted) {
       // Reload profession settings to sync with any changes from WeekView
       _loadProfessionSettings();
-      
-      // 🔥 ENSURE DATA CONSISTENCY: If current week has no data, try to load it
-      if (SharedAssignmentData.getWeekAssignmentCount(_currentWeek) == 0) {
-        print('Year View - 🔄 Assignment data changed but current week $_currentWeek has no data, loading...');
-        _loadAssignmentsForWeek(_currentWeek);
-      }
       
       // Force immediate UI refresh when assignment data changes
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -248,14 +245,28 @@ class _YearViewState extends State<YearView> {
 
   // 🔥 LOAD ASSIGNMENTS FOR SPECIFIC WEEK (when navigating)
   Future<void> _loadAssignmentsForWeek(int weekNumber) async {
-    // Check if week data is already loaded
-    if (SharedAssignmentData.getWeekAssignmentCount(weekNumber) > 0) {
-      print('Year View - ⚡ Week $weekNumber already loaded: ${SharedAssignmentData.getWeekAssignmentCount(weekNumber)} assignments');
+    // 🚀 PREVENT CONCURRENT LOADING of same week
+    if (_loadingWeeks.contains(weekNumber)) {
+      print('Year View - ⏳ Week $weekNumber already loading, skipping...');
       return;
     }
     
+    // 🚀 RESPECT EXISTING DATA: Don't load if already available
+    final existingCount = SharedAssignmentData.getWeekAssignmentCount(weekNumber);
+    if (existingCount > 0) {
+      print('Year View - ⚡ Week $weekNumber already loaded: $existingCount assignments');
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    
+    _loadingWeeks.add(weekNumber);
+    
     try {
       print('Year View - 🔄 Loading data for week $weekNumber...');
+      
+      // 🔥 USE SAME PATTERN AS WEEK VIEW - Load from database only if needed
       final weekAssignments = await SharedDataService.loadAssignments(weekNumber);
       SharedAssignmentData.updateAssignmentsForWeek(weekNumber, weekAssignments);
       print('Year View - ✅ Loaded week $weekNumber: ${weekAssignments.length} assignments');
@@ -264,31 +275,10 @@ class _YearViewState extends State<YearView> {
         setState(() {});
       }
       
-      // 🔮 SMART PRELOADING: Load adjacent weeks of the new current week
-      final List<int> adjacentWeeks = [
-        weekNumber - 1,
-        weekNumber + 1,
-      ].where((week) => week >= 1 && week <= 52).toList();
-      
-      for (final week in adjacentWeeks) {
-        if (SharedAssignmentData.getWeekAssignmentCount(week) == 0) {
-          Future.delayed(Duration(milliseconds: 100), () async {
-            try {
-              final adjWeekAssignments = await SharedDataService.loadAssignments(week);
-              SharedAssignmentData.updateAssignmentsForWeek(week, adjWeekAssignments);
-              print('Year View - 🔮 Preloaded adjacent week $week: ${adjWeekAssignments.length} assignments');
-              if (mounted) {
-                setState(() {});
-              }
-            } catch (e) {
-              print('Year View - ⚠️ Preload failed for week $week: $e');
-            }
-          });
-        }
-      }
-      
     } catch (e) {
       print('Year View - ❌ Error loading week $weekNumber: $e');
+    } finally {
+      _loadingWeeks.remove(weekNumber);
     }
   }
 
@@ -299,12 +289,21 @@ class _YearViewState extends State<YearView> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('assignments');
       
-      print('Year View - 🔄 Initial data loading for week $_currentWeek...');
+      print('Year View - 🔄 Initial data check for week $_currentWeek...');
       
-      // 🔥 RELIABLE LOADING: Use the same method as navigation
-      await _loadAssignmentsForWeek(_currentWeek);
+      // 🔥 GENTLE INITIAL LOADING: Only load if no data exists and delay slightly
+      final existingCount = SharedAssignmentData.getWeekAssignmentCount(_currentWeek);
+      if (existingCount == 0) {
+        // Small delay to let edit view load first if it's also loading
+        await Future.delayed(Duration(milliseconds: 200));
+        if (mounted) {
+          await _loadAssignmentsForWeek(_currentWeek);
+        }
+      } else {
+        print('Year View - ⚡ Using existing data for week $_currentWeek: $existingCount assignments');
+      }
       
-      print('Year View - ✅ Initial data sync complete: ${SharedAssignmentData.assignmentCount} total assignments');
+      print('Year View - ✅ Initial data check complete: ${SharedAssignmentData.assignmentCount} total assignments');
       
     } catch (e) {
       print('Year View - ❌ Error in initial data loading: $e');
@@ -1092,8 +1091,12 @@ class _YearViewState extends State<YearView> {
                       widget.onWeekChanged?.call(_currentWeek);
                       HapticFeedback.lightImpact();
                       
-                      // 🔥 FIX SYNCING ISSUE: Load data for the new week if not already loaded
-                      _loadAssignmentsForWeek(newWeek);
+                      // 🔥 GENTLE DATA LOADING: Small delay to prevent conflicts with edit view
+                      Future.delayed(Duration(milliseconds: 150), () {
+                        if (mounted && _currentWeek == newWeek) {
+                          _loadAssignmentsForWeek(newWeek);
+                        }
+                      });
                     },
                     itemCount: 52,
                     itemBuilder: (context, index) {
