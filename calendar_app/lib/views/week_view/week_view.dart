@@ -1363,7 +1363,13 @@ class _WeekViewState extends State<WeekView> {
             },
           );
         },
-      );
+      ).then((_) {
+        // 🔥 INSTANT UI REFRESH: Update main calendar when dialog closes
+        if (mounted) {
+          setState(() {});
+          print('WeekView: ✅ Refreshed UI after profession settings dialog closed');
+        }
+      });
     } catch (e) {
       print('🔥 ERROR in profession dialog: $e');
       // Show simple error dialog
@@ -1483,7 +1489,13 @@ class _WeekViewState extends State<WeekView> {
           },
         );
       },
-    );
+    ).then((_) {
+      // 🔥 INSTANT UI REFRESH: Update main calendar when dialog closes
+      if (mounted) {
+        setState(() {});
+        print('WeekView: ✅ Refreshed UI after custom profession dialog closed');
+      }
+    });
   }
 
   Future<void> _saveCustomProfessions() async {
