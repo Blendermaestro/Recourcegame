@@ -503,7 +503,7 @@ class PDFCalendarService {
               return pw.Padding(
                 padding: const pw.EdgeInsets.only(bottom: 2),
                 child: pw.Text(
-                  '• $employeeName: ${vacation.getDisplayText()}',
+                  '- $employeeName: ${vacation.getDisplayText()}', // Simple dash instead of bullet
                   style: const pw.TextStyle(fontSize: 9),
                 ),
               );
