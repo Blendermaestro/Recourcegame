@@ -158,4 +158,73 @@ class VacationManager {
     await saveVacations();
     print('VacationManager: All vacation data cleared');
   }
+  
+  /// 🔥 VACATION OVERRIDE: Remove work assignments that conflict with vacation dates
+  static Future<void> _removeConflictingAssignments(VacationAbsence vacation) async {
+    try {
+      print('VacationManager: 🔍 Checking for conflicting work assignments for ${vacation.employeeId}...');
+      
+      // Get all assignments for current year
+      final currentYear = SharedAssignmentData.currentYear;
+      final allAssignments = SharedAssignmentData.getAssignmentsForYear(currentYear);
+      final assignmentsToRemove = <String>[];
+      
+      // Check each assignment for conflicts with vacation dates
+      for (final entry in allAssignments.entries) {
+        final employee = entry.value;
+        if (employee.id != vacation.employeeId) continue; // Only check this employee's assignments
+        
+        // Parse assignment key to get the date
+        final assignmentKey = entry.key;
+        final parts = assignmentKey.split('-');
+        if (parts.length >= 3) {
+          final weekNumber = int.tryParse(parts[0]);
+          final dayIndex = int.tryParse(parts[2]);
+          
+          if (weekNumber != null && dayIndex != null) {
+            // Calculate the actual date of this assignment
+            final assignmentDate = _getDateFromWeekAndDay(weekNumber, dayIndex, currentYear);
+            
+            // Check if assignment date falls within vacation period
+            if (vacation.isActiveOn(assignmentDate)) {
+              assignmentsToRemove.add(assignmentKey);
+              print('VacationManager: 📅 Found conflicting assignment on ${assignmentDate.toString().split(' ')[0]} (Week $weekNumber, Day $dayIndex)');
+            }
+          }
+        }
+      }
+      
+      // Remove conflicting assignments
+      if (assignmentsToRemove.isNotEmpty) {
+        for (final key in assignmentsToRemove) {
+          SharedAssignmentData.removeAssignmentForYear(currentYear, key);
+        }
+        
+        // Force refresh to update UI
+        SharedAssignmentData.forceRefresh();
+        
+        print('VacationManager: ✅ Removed ${assignmentsToRemove.length} conflicting work assignments for vacation ${vacation.id}');
+      } else {
+        print('VacationManager: ✅ No conflicting work assignments found for vacation ${vacation.id}');
+      }
+      
+    } catch (e) {
+      print('VacationManager: ❌ Error removing conflicting assignments: $e');
+      // Don't throw - vacation should still be saved even if assignment removal fails
+    }
+  }
+  
+  /// Helper: Get actual date from week number and day index
+  static DateTime _getDateFromWeekAndDay(int weekNumber, int dayIndex, int year) {
+    // Get first day of the year
+    final firstDayOfYear = DateTime(year, 1, 1);
+    
+    // Calculate first Monday of the year (ISO week date standard)
+    final firstMonday = firstDayOfYear.add(Duration(days: (8 - firstDayOfYear.weekday) % 7));
+    
+    // Calculate the target date
+    final targetDate = firstMonday.add(Duration(days: (weekNumber - 1) * 7 + dayIndex));
+    
+    return targetDate;
+  }
 } 
