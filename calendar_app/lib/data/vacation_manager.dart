@@ -2,6 +2,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/vacation_absence.dart';
 import '../services/shared_data_service.dart';
+import '../services/shared_assignment_data.dart';
+import '../services/shared_assignment_data.dart';
 
 class VacationManager {
   static final List<VacationAbsence> _vacations = [];
@@ -99,6 +101,9 @@ class VacationManager {
       
       // 🔥 NEW: Save to Supabase for shared access
       await SharedDataService.saveVacation(vacation);
+      
+      // 🔥 VACATION OVERRIDE: Remove conflicting work assignments
+      await _removeConflictingAssignments(vacation);
       
       // Add to local cache
       _vacations.add(vacation);
