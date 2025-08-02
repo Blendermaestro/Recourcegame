@@ -19,21 +19,26 @@ class PDFCalendarService {
   }) async {
     final pdf = pw.Document();
     
-    // Get week dates
-    final dates = _getWeekDates(weekNumber, year);
+    // Get week dates using the SAME calculation as the app
+    final dates = _getWeekDatesLikeApp(weekNumber, year);
     
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
+        margin: const pw.EdgeInsets.all(20), // Smaller margins
         build: (pw.Context context) {
           return [
             // Header
             _buildHeader(weekNumber, year, dates),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 15),
             
             // Calendar tables with REAL data
-            _buildRealCalendarTables(assignments, weekNumber, dates),
+            _buildRealCalendarTables(assignments, weekNumber, dates, year),
+            
+            pw.SizedBox(height: 15),
+            
+            // Vacation section
+            _buildVacationSection(dates),
             
             // Footer
             pw.Spacer(),
@@ -57,7 +62,7 @@ class PDFCalendarService {
   // ==================== REAL DATA PROCESSING ====================
   
   /// Build calendar tables using REAL assignment data
-  static pw.Widget _buildRealCalendarTables(Map<String, Employee> assignments, int weekNumber, List<DateTime> dates) {
+  static pw.Widget _buildRealCalendarTables(Map<String, Employee> assignments, int weekNumber, List<DateTime> dates, int year) {
     // Parse assignments by shift type
     final dayShiftAssignments = <String, List<Assignment>>{};
     final nightShiftAssignments = <String, List<Assignment>>{};
@@ -80,23 +85,24 @@ class PDFCalendarService {
       children: [
         // Day shift table
         if (dayShiftAssignments.isNotEmpty) ...[
-          _buildShiftTable('PÄIVÄVUORO (06:00-18:00)', dayShiftAssignments, dates),
-          pw.SizedBox(height: 20),
+          _buildShiftTable('PÄIVÄVUORO (06:00-18:00)', dayShiftAssignments, dates, year),
+          pw.SizedBox(height: 15),
         ],
         
         // Night shift table
         if (nightShiftAssignments.isNotEmpty) ...[
-          _buildShiftTable('YÖVUORO (18:00-06:00)', nightShiftAssignments, dates),
+          _buildShiftTable('YÖVUORO (18:00-06:00)', nightShiftAssignments, dates, year),
         ],
       ],
     );
   }
   
-  /// Build shift table with merged cells for consecutive assignments
+  /// Build shift table with repeated content for multi-day assignments
   static pw.Widget _buildShiftTable(
     String shiftTitle,
     Map<String, List<Assignment>> professionAssignments,
     List<DateTime> dates,
+    int year,
   ) {
     // Get sorted professions
     final sortedProfessions = professionAssignments.keys.toList()..sort();
@@ -107,15 +113,15 @@ class PDFCalendarService {
         pw.Text(
           shiftTitle,
           style: pw.TextStyle(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.blue900,
           ),
         ),
-        pw.SizedBox(height: 8),
+        pw.SizedBox(height: 5),
         
         pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey600, width: 1),
+          border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
           children: [
             // Header row with day names
             pw.TableRow(
@@ -140,9 +146,9 @@ class PDFCalendarService {
               ],
             ),
             
-            // Profession rows with merged cells
+            // Profession rows
             ...sortedProfessions.expand((profession) {
-              return _buildProfessionRows(profession, professionAssignments[profession]!, dates);
+              return _buildProfessionRows(profession, professionAssignments[profession]!, dates, year);
             }),
           ],
         ),
@@ -150,8 +156,8 @@ class PDFCalendarService {
     );
   }
   
-  /// Build profession rows with cell merging for consecutive assignments
-  static List<pw.TableRow> _buildProfessionRows(String profession, List<Assignment> assignments, List<DateTime> dates) {
+  /// Build profession rows with repeated content for multi-day assignments
+  static List<pw.TableRow> _buildProfessionRows(String profession, List<Assignment> assignments, List<DateTime> dates, int year) {
     // Group assignments by profession row
     final rowAssignments = <int, List<Assignment>>{};
     for (final assignment in assignments) {
@@ -171,44 +177,27 @@ class PDFCalendarService {
         children: [
           // Profession column (show full name for first row, abbreviated for subsequent)
           _buildTableCell(
-            sortedRows.indexOf(row) == 0 ? displayName : '${displayName}${row + 1}',
+            sortedRows.indexOf(row) == 0 ? displayName : '$displayName${row + 1}',
             isHeader: true,
           ),
           
-          // Day columns with merged cells
-          ..._buildMergedDayCells(rowAssignmentsList, dates),
+          // Day columns - repeat content for multi-day assignments
+          ..._buildDayCells(rowAssignmentsList, dates, year),
         ],
       );
     }).toList();
   }
   
-  /// Build day cells with merging for consecutive assignments
-  static List<pw.Widget> _buildMergedDayCells(List<Assignment> assignments, List<DateTime> dates) {
+  /// Build day cells with repeated content for consecutive assignments
+  static List<pw.Widget> _buildDayCells(List<Assignment> assignments, List<DateTime> dates, int year) {
     final cells = <pw.Widget>[];
-    final processedDays = <int>{};
     
     for (int dayIndex = 0; dayIndex < 7; dayIndex++) {
-      if (processedDays.contains(dayIndex)) {
-        continue; // Skip days that are part of merged cells
-      }
-      
       // Find assignment for this day
       final dayAssignment = assignments.where((a) => a.dayIndex == dayIndex).firstOrNull;
       
       if (dayAssignment?.employee != null) {
         final employee = dayAssignment!.employee!;
-        
-        // Find consecutive days with same employee
-        int consecutiveDays = 1;
-        for (int nextDay = dayIndex + 1; nextDay < 7; nextDay++) {
-          final nextAssignment = assignments.where((a) => a.dayIndex == nextDay).firstOrNull;
-          if (nextAssignment?.employee?.id == employee.id) {
-            consecutiveDays++;
-            processedDays.add(nextDay);
-          } else {
-            break;
-          }
-        }
         
         // Check for vacation
         final date = dates[dayIndex];
@@ -224,27 +213,66 @@ class PDFCalendarService {
           bgColor = PdfColors.red100;
         }
         
-        // Add merged cell
-        cells.add(_buildMergedTableCell(cellContent, consecutiveDays, bgColor: bgColor));
-        
-        // Add empty cells for merged days (PDF tables require all cells)
-        for (int i = 1; i < consecutiveDays; i++) {
-          // These will be handled by the merged cell above
-        }
+        cells.add(_buildTableCell(cellContent, bgColor: bgColor));
       } else {
         // Empty cell
         cells.add(_buildTableCell(''));
       }
-      
-      processedDays.add(dayIndex);
     }
     
-    // Ensure we have exactly 7 cells
-    while (cells.length < 7) {
-      cells.add(_buildTableCell(''));
+    return cells;
+  }
+  
+  /// Build vacation section
+  static pw.Widget _buildVacationSection(List<DateTime> dates) {
+    final weekStart = dates.first;
+    final weekEnd = dates.last;
+    
+    // Find vacations that overlap with this week
+    final weekVacations = VacationManager.vacations.where((vacation) {
+      return vacation.startDate.isBefore(weekEnd.add(const Duration(days: 1))) &&
+             vacation.endDate.isAfter(weekStart.subtract(const Duration(days: 1)));
+    }).toList();
+    
+    if (weekVacations.isEmpty) {
+      return pw.Container();
     }
     
-    return cells.take(7).toList();
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          '🏖️ LOMAT TÄLLÄ VIIKOLLA',
+          style: pw.TextStyle(
+            fontSize: 14,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blue900,
+          ),
+        ),
+        pw.SizedBox(height: 5),
+        
+        pw.Container(
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.blue50,
+            borderRadius: pw.BorderRadius.circular(4),
+            border: pw.Border.all(color: PdfColors.blue200, width: 1),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: weekVacations.map((vacation) {
+              return pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 3),
+                child: pw.Text(
+                  '• ${vacation.getDisplayText()} (${vacation.employeeId})',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
   }
   
   // ==================== UTILITY METHODS ====================
@@ -278,19 +306,13 @@ class PDFCalendarService {
     }
   }
   
-  /// Build merged table cell that spans multiple columns
-  static pw.Widget _buildMergedTableCell(String text, int colspan, {PdfColor? bgColor}) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(6),
-      decoration: pw.BoxDecoration(
-        color: bgColor ?? PdfColors.white,
-      ),
-      child: pw.Text(
-        text,
-        style: const pw.TextStyle(fontSize: 9),
-        textAlign: pw.TextAlign.center,
-      ),
-    );
+  /// Get week dates using the SAME calculation as the app
+  static List<DateTime> _getWeekDatesLikeApp(int weekNumber, int year) {
+    final startOfYear = DateTime(year, 1, 1);
+    final firstMonday = startOfYear.subtract(Duration(days: startOfYear.weekday - 1));
+    final weekStart = firstMonday.add(Duration(days: (weekNumber - 1) * 7));
+    
+    return List.generate(7, (index) => weekStart.add(Duration(days: index)));
   }
   
   /// Build PDF header
@@ -300,10 +322,10 @@ class PDFCalendarService {
     
     return pw.Container(
       width: double.infinity,
-      padding: const pw.EdgeInsets.all(16),
+      padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
         color: PdfColors.blue900,
-        borderRadius: pw.BorderRadius.circular(8),
+        borderRadius: pw.BorderRadius.circular(6),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -312,16 +334,16 @@ class PDFCalendarService {
             'ALUSTAVA TYÖVUOROLISTA',
             style: pw.TextStyle(
               color: PdfColors.white,
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: pw.FontWeight.bold,
             ),
           ),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 5),
           pw.Text(
             'Viikko $weekNumber/$year (${_formatDate(startDate)} - ${_formatDate(endDate)})',
             style: pw.TextStyle(
               color: PdfColors.white,
-              fontSize: 16,
+              fontSize: 14,
             ),
           ),
         ],
@@ -334,7 +356,7 @@ class PDFCalendarService {
     final now = DateTime.now();
     return pw.Container(
       width: double.infinity,
-      padding: const pw.EdgeInsets.all(12),
+      padding: const pw.EdgeInsets.all(8),
       decoration: pw.BoxDecoration(
         color: PdfColors.grey200,
         borderRadius: pw.BorderRadius.circular(4),
@@ -344,42 +366,33 @@ class PDFCalendarService {
         children: [
           pw.Text(
             'Tulostettu: ${now.day}.${now.month}.${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
-            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
           pw.Text(
             'Sovi muutoksista vuorosi työnjohtajan kanssa.',
-            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
+            style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
           ),
         ],
       ),
     );
   }
   
-  /// Build table cell
+  /// Build table cell with thinner padding
   static pw.Widget _buildTableCell(String text, {bool isHeader = false, PdfColor? bgColor}) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(6),
+      padding: const pw.EdgeInsets.all(3), // MUCH thinner padding
       decoration: pw.BoxDecoration(
         color: bgColor ?? (isHeader ? PdfColors.grey300 : PdfColors.white),
       ),
       child: pw.Text(
         text,
         style: pw.TextStyle(
-          fontSize: isHeader ? 10 : 9,
+          fontSize: isHeader ? 8 : 7, // Smaller font for thinner cells
           fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
         textAlign: pw.TextAlign.center,
       ),
     );
-  }
-  
-  /// Get week dates
-  static List<DateTime> _getWeekDates(int weekNumber, int year) {
-    final firstDayOfYear = DateTime(year, 1, 1);
-    final firstMonday = firstDayOfYear.add(Duration(days: (8 - firstDayOfYear.weekday) % 7));
-    final weekStart = firstMonday.add(Duration(days: (weekNumber - 1) * 7));
-    
-    return List.generate(7, (index) => weekStart.add(Duration(days: index)));
   }
   
   /// Format date
