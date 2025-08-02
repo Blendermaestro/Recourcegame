@@ -3,7 +3,6 @@ import 'dart:convert';
 import '../models/vacation_absence.dart';
 import '../services/shared_data_service.dart';
 import '../services/shared_assignment_data.dart';
-import '../services/shared_assignment_data.dart';
 
 class VacationManager {
   static final List<VacationAbsence> _vacations = [];
@@ -177,7 +176,7 @@ class VacationManager {
         // Parse assignment key to get the date
         final assignmentKey = entry.key;
         final parts = assignmentKey.split('-');
-        if (parts.length >= 3) {
+        if (parts.length == 5) { // weekNumber-shiftTitle-day-profession-professionRow
           final weekNumber = int.tryParse(parts[0]);
           final dayIndex = int.tryParse(parts[2]);
           
@@ -227,8 +226,4 @@ class VacationManager {
     
     return targetDate;
   }
-  
-  static Future<void> _removeConflictingAssignments(VacationAbsence vacation) async {
-    print('VacationManager: TODO - Remove conflicting assignments for ${vacation.employeeId}');
-  }
-} 
+}
