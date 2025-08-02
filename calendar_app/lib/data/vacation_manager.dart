@@ -227,4 +227,8 @@ class VacationManager {
     
     return targetDate;
   }
+  
+  static Future<void> _removeConflictingAssignments(VacationAbsence vacation) async {
+    print('VacationManager: TODO - Remove conflicting assignments for ${vacation.employeeId}');
+  }
 } 

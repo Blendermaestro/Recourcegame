@@ -13,6 +13,9 @@ import 'package:calendar_app/services/shared_data_fix_service.dart';
 import 'package:calendar_app/models/user_tier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+// 📸 SIMPLE SCREENSHOT IMPORTS
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 
 // Platform-specific fullscreen imports
 import 'fullscreen_stub.dart'
@@ -43,6 +46,9 @@ class _YearViewState extends State<YearView> {
   
   // 🔥 PREVENT LOADING CONFLICTS
   final Set<int> _loadingWeeks = <int>{};
+  
+  // 📸 SCREENSHOT FUNCTIONALITY
+  final GlobalKey _screenshotKey = GlobalKey();
   
   // 🔥 SHARED DATA - Use truly shared data class with year awareness
   Map<String, Employee> get _assignments => SharedAssignmentData.getAssignmentsForYear(_selectedYear);
@@ -87,6 +93,52 @@ class _YearViewState extends State<YearView> {
     SharedAssignmentData.removeYearChangeListener(_onYearChanged);
     _pageController.dispose();
     super.dispose();
+  }
+  
+  // 📸 SUPER SIMPLE SCREENSHOT METHOD
+  Future<void> _takeScreenshot() async {
+    try {
+      final RenderRepaintBoundary boundary = _screenshotKey.currentContext!
+          .findRenderObject() as RenderRepaintBoundary;
+      
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0); // High quality
+      await image.toByteData(format: ui.ImageByteFormat.png); // Prepare image data
+      
+      // Just show success and let browser handle right-click save
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('📸 Kuvakaappaus valmis! (Viikko $_currentWeek/$_selectedYear)'),
+                Text('💡 Vihje: Käytä selaimen "Tallenna sivu" -toimintoa', 
+                     style: TextStyle(fontSize: 12, color: Colors.white70)),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Screenshot error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Kuvakaappaus epäonnistui'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
   
   // 🔥 HANDLE YEAR CHANGES FROM OTHER VIEWS
@@ -1081,7 +1133,9 @@ class _YearViewState extends State<YearView> {
                     }
                     return KeyEventResult.ignored;
                   },
-                  child: PageView.builder(
+                  child: RepaintBoundary(
+                    key: _screenshotKey,
+                    child: PageView.builder(
                     controller: _pageController,
                     physics: const BouncingScrollPhysics(), // Better for PC scrolling
                     onPageChanged: (index) {
@@ -1104,6 +1158,7 @@ class _YearViewState extends State<YearView> {
                       final weekNumber = index + 1;
                       return _buildWeekPage(weekNumber);
                     },
+                    ),
                   ),
                 ),
               ),
@@ -1112,6 +1167,13 @@ class _YearViewState extends State<YearView> {
           ),
         ),
       ),
+      ),
+      // 📸 SCREENSHOT BUTTON
+      floatingActionButton: FloatingActionButton(
+        onPressed: _takeScreenshot,
+        backgroundColor: const Color(0xFF253237),
+        child: const Icon(Icons.camera_alt, color: Colors.white),
+        tooltip: 'Ota kuvakaappaus viikosta $_currentWeek',
       ),
     );
   }
