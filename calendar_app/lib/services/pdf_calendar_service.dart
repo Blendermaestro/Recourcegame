@@ -182,90 +182,181 @@ class PDFCalendarService {
     return ordered;
   }
   
-  /// Build custom table that shows repeated names (simpler approach)
+  /// Build custom table with real spanning blocks using positioned containers
   static pw.Widget _buildCustomMergedTable(
     List<String> orderedProfessions,
     Map<String, List<Assignment>> professionAssignments,
     List<DateTime> dates,
     int year,
   ) {
-    final rows = <pw.TableRow>[];
+    final cellWidth = 70.0; // Fixed width for each day column
+    final cellHeight = 16.0; // Fixed height for each row
+    final professionWidth = 80.0; // Width for profession column
     
-    // Header row with day names
-    rows.add(pw.TableRow(
-      decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+    return pw.Column(
       children: [
-        _buildTableCell('ROOLI', isHeader: true),
-        _buildTableCell('TI', isHeader: true),
-        _buildTableCell('KE', isHeader: true),
-        _buildTableCell('TO', isHeader: true),
-        _buildTableCell('PE', isHeader: true),
-        _buildTableCell('LA', isHeader: true),
-        _buildTableCell('SU', isHeader: true),
-        _buildTableCell('MA', isHeader: true),
+        // Header row with day names
+        pw.Container(
+          height: cellHeight,
+          child: pw.Row(
+            children: [
+              pw.Container(width: professionWidth, child: _buildHeaderCell('ROOLI')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('TI')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('KE')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('TO')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('PE')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('LA')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('SU')),
+              pw.Container(width: cellWidth, child: _buildHeaderCell('MA')),
+            ],
+          ),
+        ),
+        
+        // Date row
+        pw.Container(
+          height: cellHeight,
+          child: pw.Row(
+            children: [
+              pw.Container(width: professionWidth, child: _buildHeaderCell('PVM')),
+              ...List.generate(7, (index) => 
+                pw.Container(width: cellWidth, child: _buildHeaderCell(_formatDateShort(dates[index])))
+              ),
+            ],
+          ),
+        ),
+        
+        // Profession rows with real spanning blocks
+        ..._buildRealSpanningRows(orderedProfessions, professionAssignments, dates, year, cellWidth, cellHeight, professionWidth),
       ],
-    ));
-    
-    // Date row
-    rows.add(pw.TableRow(
-      children: [
-        _buildTableCell('PVM', isHeader: true),
-        ...List.generate(7, (index) => _buildTableCell(_formatDateShort(dates[index]))),
-      ],
-    ));
-    
-    // Profession rows with repeated names
-    for (final profession in orderedProfessions) {
-      final assignments = professionAssignments[profession]!;
-      rows.addAll(_buildProfessionRowsWithMerging(profession, assignments, dates, year));
-    }
-    
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.4),
-      children: rows,
     );
   }
   
-  /// Build profession rows with merged cells for consecutive assignments
-  static List<pw.TableRow> _buildProfessionRowsWithMerging(String profession, List<Assignment> assignments, List<DateTime> dates, int year) {
-    // Group assignments by profession row
-    final rowAssignments = <int, List<Assignment>>{};
-    for (final assignment in assignments) {
-      rowAssignments.putIfAbsent(assignment.professionRow, () => []).add(assignment);
-    }
-    
-    final displayName = _getProfessionDisplayName(profession);
-    final sortedRows = rowAssignments.keys.toList()..sort();
-    
-    return sortedRows.map((row) {
-      final rowAssignmentsList = rowAssignments[row]!;
-      
-      return pw.TableRow(
-        children: [
-          // Profession column
-          _buildTableCell(
-            sortedRows.indexOf(row) == 0 ? displayName : '$displayName${row + 1}',
-            isHeader: true,
-          ),
-          
-          // Day columns with merged cell simulation
-          ..._buildMergedDayCells(rowAssignmentsList, dates, year),
-        ],
-      );
-    }).toList();
+  /// Build header cell
+  static pw.Widget _buildHeaderCell(String text) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey300,
+        border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+      ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
+        textAlign: pw.TextAlign.center,
+      ),
+    );
   }
   
-  /// Build day cells with proper visual merging (name only once per block)
-  static List<pw.Widget> _buildMergedDayCells(List<Assignment> assignments, List<DateTime> dates, int year) {
-    final cells = <pw.Widget>[];
+  /// Build profession rows with real spanning assignment blocks
+  static List<pw.Widget> _buildRealSpanningRows(
+    List<String> orderedProfessions,
+    Map<String, List<Assignment>> professionAssignments,
+    List<DateTime> dates,
+    int year,
+    double cellWidth,
+    double cellHeight,
+    double professionWidth,
+  ) {
+    final rows = <pw.Widget>[];
+    
+    for (final profession in orderedProfessions) {
+      final assignments = professionAssignments[profession]!;
+      
+      // Group assignments by profession row
+      final rowAssignments = <int, List<Assignment>>{};
+      for (final assignment in assignments) {
+        rowAssignments.putIfAbsent(assignment.professionRow, () => []).add(assignment);
+      }
+      
+      final sortedRows = rowAssignments.keys.toList()..sort();
+      
+      for (int rowIndex = 0; rowIndex < sortedRows.length; rowIndex++) {
+        final row = sortedRows[rowIndex];
+        final rowAssignmentsList = rowAssignments[row]!;
+        
+        rows.add(_buildProfessionRowWithSpanning(
+          profession,
+          rowAssignmentsList,
+          dates,
+          year,
+          cellWidth,
+          cellHeight,
+          professionWidth,
+          rowIndex == 0, // Show full name only for first row
+        ));
+      }
+    }
+    
+    return rows;
+  }
+  
+  /// Build single profession row with real spanning blocks
+  static pw.Widget _buildProfessionRowWithSpanning(
+    String profession,
+    List<Assignment> assignments,
+    List<DateTime> dates,
+    int year,
+    double cellWidth,
+    double cellHeight,
+    double professionWidth,
+    bool isFirstRow,
+  ) {
+    return pw.Container(
+      height: cellHeight,
+      child: pw.Stack(
+        children: [
+          // Background grid
+          pw.Row(
+            children: [
+              pw.Container(
+                width: professionWidth,
+                height: cellHeight,
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                  border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+                ),
+                padding: const pw.EdgeInsets.all(2),
+                child: pw.Text(
+                  isFirstRow ? _getProfessionDisplayNameClean(profession) : '', // Only show name in first row
+                  style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              ...List.generate(7, (index) => 
+                pw.Container(
+                  width: cellWidth,
+                  height: cellHeight,
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.white,
+                    border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+                  ),
+                )
+              ),
+            ],
+          ),
+          
+          // Spanning assignment blocks
+          ..._buildSpanningBlocks(assignments, dates, year, cellWidth, cellHeight, professionWidth),
+        ],
+      ),
+    );
+  }
+  
+  /// Build real spanning blocks for assignments
+  static List<pw.Widget> _buildSpanningBlocks(
+    List<Assignment> assignments,
+    List<DateTime> dates,
+    int year,
+    double cellWidth,
+    double cellHeight,
+    double professionWidth,
+  ) {
+    final blocks = <pw.Widget>[];
     final processedDays = <int>{};
     
     for (int dayIndex = 0; dayIndex < 7; dayIndex++) {
-      if (processedDays.contains(dayIndex)) {
-        continue; // Skip days already processed as part of merged blocks
-      }
+      if (processedDays.contains(dayIndex)) continue;
       
-      // Find assignment for this day
       final dayAssignment = assignments.where((a) => a.dayIndex == dayIndex).firstOrNull;
       
       if (dayAssignment?.employee != null) {
@@ -297,72 +388,57 @@ class PDFCalendarService {
           bgColor = PdfColors.red100;
         }
         
-        // FIRST cell: show name with right border
-        cells.add(_buildMergedStartCell(content, bgColor, span > 1));
+        // Create REAL spanning block
+        blocks.add(
+          pw.Positioned(
+            left: professionWidth + (dayIndex * cellWidth),
+            top: 0,
+            child: pw.Container(
+              width: cellWidth * span, // REAL spanning width!
+              height: cellHeight,
+              decoration: pw.BoxDecoration(
+                color: bgColor,
+                border: pw.Border.all(color: PdfColors.grey800, width: 0.8),
+                borderRadius: pw.BorderRadius.circular(2),
+              ),
+              padding: const pw.EdgeInsets.all(2),
+              child: pw.Center(
+                child: pw.Text(
+                  content,
+                  style: const pw.TextStyle(fontSize: 6),
+                  textAlign: pw.TextAlign.center,
+                  maxLines: 1,
+                ),
+              ),
+            ),
+          ),
+        );
         
-        // CONTINUATION cells: empty with matching background, no left border
-        for (int i = 1; i < span; i++) {
-          cells.add(_buildMergedContinuationCell(bgColor, i == span - 1));
-        }
-      } else {
-        // Empty cell
-        cells.add(_buildTableCell(''));
+        processedDays.add(dayIndex);
+      }
+    }
+    
+    return blocks;
+  }
+  
+  /// Get clean profession display name (no numbers)
+  static String _getProfessionDisplayNameClean(String profession) {
+    try {
+      final role = EmployeeRole.values.byName(profession);
+      final displayName = SharedAssignmentData.getRoleDisplayName(role);
+      
+      // Remove numbers from profession names (ICT2 -> ICT)
+      if (displayName.contains(RegExp(r'\d'))) {
+        return displayName.replaceAll(RegExp(r'\d+'), '');
       }
       
-      processedDays.add(dayIndex);
+      return displayName;
+    } catch (e) {
+      return profession.toUpperCase();
     }
-    
-    // Ensure we have exactly 7 cells
-    while (cells.length < 7) {
-      cells.add(_buildTableCell(''));
-    }
-    
-    return cells.take(7).toList();
   }
   
-  /// Build first cell of a merged group
-  static pw.Widget _buildMergedStartCell(String content, PdfColor bgColor, bool hasRightMerge) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(2),
-      decoration: pw.BoxDecoration(
-        color: bgColor,
-        border: pw.Border(
-          top: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          left: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          right: hasRightMerge 
-              ? pw.BorderSide.none // No right border if merging continues
-              : pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-        ),
-      ),
-      child: pw.Text(
-        content,
-        style: const pw.TextStyle(fontSize: 6),
-        textAlign: pw.TextAlign.center,
-      ),
-    );
-  }
-  
-  /// Build continuation cell of a merged group
-  static pw.Widget _buildMergedContinuationCell(PdfColor bgColor, bool isLast) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(2),
-      decoration: pw.BoxDecoration(
-        color: bgColor,
-        border: pw.Border(
-          top: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          left: pw.BorderSide.none, // No left border to create merged look
-          right: isLast 
-              ? pw.BorderSide(color: PdfColors.grey600, width: 0.4) // Right border on last cell
-              : pw.BorderSide.none, // No right border if merging continues
-        ),
-      ),
-      child: pw.Text('', style: const pw.TextStyle(fontSize: 6)), // EMPTY content
-    );
-  }
-  
-  /// Build vacation section with actual employee names
+  /// Build vacation section with proper Finnish characters and no emojis
   static pw.Widget _buildVacationSectionWithNames(List<DateTime> dates, Map<String, String> employeeMap) {
     final weekStart = dates.first;
     final weekEnd = dates.last;
@@ -381,7 +457,7 @@ class PDFCalendarService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(
-          'LOMAT TALLA VIIKOLLA', // No emoji - just text
+          'LOMAT TÄLLÄ VIIKOLLA', // Fixed Finnish characters
           style: pw.TextStyle(
             fontSize: 12,
             fontWeight: pw.FontWeight.bold,
@@ -435,16 +511,6 @@ class PDFCalendarService {
     }
   }
   
-  /// Get profession display name
-  static String _getProfessionDisplayName(String profession) {
-    try {
-      final role = EmployeeRole.values.byName(profession);
-      return SharedAssignmentData.getRoleDisplayName(role);
-    } catch (e) {
-      return profession.toUpperCase();
-    }
-  }
-  
   /// Get week dates using the SAME calculation as the app
   static List<DateTime> _getWeekDatesLikeApp(int weekNumber, int year) {
     final jan4 = DateTime(year, 1, 4);
@@ -456,7 +522,7 @@ class PDFCalendarService {
     return List.generate(7, (index) => tuesdayStart.add(Duration(days: index)));
   }
   
-  /// Build PDF header
+  /// Build PDF header with proper Finnish characters
   static pw.Widget _buildHeader(int weekNumber, int year, List<DateTime> dates) {
     final startDate = dates.first;
     final endDate = dates.last;
@@ -472,7 +538,7 @@ class PDFCalendarService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(
-            'ALUSTAVA TYOVUOROLISTA',
+            'ALUSTAVA TYÖVUOROLISTA', // Fixed ö character
             style: pw.TextStyle(
               color: PdfColors.white,
               fontSize: 18,
@@ -492,7 +558,7 @@ class PDFCalendarService {
     );
   }
   
-  /// Build footer
+  /// Build footer with proper Finnish characters
   static pw.Widget _buildFooter() {
     final now = DateTime.now();
     return pw.Container(
@@ -510,28 +576,10 @@ class PDFCalendarService {
             style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
           ),
           pw.Text(
-            'Sovi muutoksista vuorosi tyonjohtajan kanssa.',
+            'Sovi muutoksista vuorosi työnjohtajan kanssa.', // Fixed ö character
             style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
           ),
         ],
-      ),
-    );
-  }
-  
-  /// Build table cell with extra thin padding
-  static pw.Widget _buildTableCell(String text, {bool isHeader = false, PdfColor? bgColor}) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(2), // Extra thin padding
-      decoration: pw.BoxDecoration(
-        color: bgColor ?? (isHeader ? PdfColors.grey300 : PdfColors.white),
-      ),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-          fontSize: isHeader ? 7 : 6, // Even smaller font
-          fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
-        textAlign: pw.TextAlign.center,
       ),
     );
   }
