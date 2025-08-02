@@ -14,6 +14,7 @@ import 'package:calendar_app/models/user_tier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 // 📸 SIMPLE SCREENSHOT IMPORTS
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 
@@ -98,27 +99,79 @@ class _YearViewState extends State<YearView> {
   // 📸 SUPER SIMPLE SCREENSHOT METHOD
   Future<void> _takeScreenshot() async {
     try {
-      final RenderRepaintBoundary boundary = _screenshotKey.currentContext!
-          .findRenderObject() as RenderRepaintBoundary;
+      print('📸 Starting screenshot...');
       
-      final ui.Image image = await boundary.toImage(pixelRatio: 3.0); // High quality
-      await image.toByteData(format: ui.ImageByteFormat.png); // Prepare image data
+      // Check if context exists
+      final context = _screenshotKey.currentContext;
+      if (context == null) {
+        print('❌ Screenshot context is null');
+        if (mounted) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Kuvakaappausvirhe: Konteksti puuttuu'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
       
-      // Just show success and let browser handle right-click save
+      print('✅ Context found, getting render object...');
+      final RenderObject? renderObject = context.findRenderObject();
+      if (renderObject == null || renderObject is! RenderRepaintBoundary) {
+        print('❌ Invalid render object: $renderObject');
+        if (mounted) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Kuvakaappausvirhe: Render-objekti puuttuu'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      print('✅ Render boundary found, capturing image...');
+      final RenderRepaintBoundary boundary = renderObject;
+      
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.0); // Reduced for better performance
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData == null) {
+        print('❌ Failed to convert image to bytes');
+        if (mounted) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Kuvakaappausvirhe: Kuvan muuntaminen epäonnistui'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      print('✅ Screenshot captured successfully! Size: ${byteData.lengthInBytes} bytes');
+      
+      // Show success message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(this.context).showSnackBar(
           SnackBar(
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('📸 Kuvakaappaus valmis! (Viikko $_currentWeek/$_selectedYear)'),
-                Text('💡 Vihje: Käytä selaimen "Tallenna sivu" -toimintoa', 
+                Text('📸 Kuvakaappaus onnistui! (Viikko $_currentWeek/$_selectedYear)'),
+                Text('💡 Vihje: Käytä selaimen kehittäjätyökaluja tai "Tallenna sivu" -toimintoa', 
                      style: TextStyle(fontSize: 12, color: Colors.white70)),
+                Text('📊 Koko: ${(byteData.lengthInBytes / 1024).toStringAsFixed(1)} KB', 
+                     style: TextStyle(fontSize: 11, color: Colors.white60)),
               ],
             ),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'OK',
               textColor: Colors.white,
@@ -127,14 +180,15 @@ class _YearViewState extends State<YearView> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Screenshot error: $e');
+      print('Stack trace: $stackTrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Kuvakaappaus epäonnistui'),
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Kuvakaappaus epäonnistui: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -1117,24 +1171,24 @@ class _YearViewState extends State<YearView> {
             ),
             // Scrollable content area
             Expanded(
-              child: Container(
-                color: const Color(0xFFE0FBFC),
-                child: Focus(
-                  autofocus: true,
-                  onKey: (node, event) {
-                    if (event is RawKeyDownEvent) {
-                      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                        _navigateToWeek(_currentWeek - 1);
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _navigateToWeek(_currentWeek + 1);
-                        return KeyEventResult.handled;
+              child: RepaintBoundary(
+                key: _screenshotKey,
+                child: Container(
+                  color: const Color(0xFFE0FBFC),
+                  child: Focus(
+                    autofocus: true,
+                    onKey: (node, event) {
+                      if (event is RawKeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _navigateToWeek(_currentWeek - 1);
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _navigateToWeek(_currentWeek + 1);
+                          return KeyEventResult.handled;
+                        }
                       }
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: RepaintBoundary(
-                    key: _screenshotKey,
+                      return KeyEventResult.ignored;
+                    },
                     child: PageView.builder(
                     controller: _pageController,
                     physics: const BouncingScrollPhysics(), // Better for PC scrolling
@@ -1162,7 +1216,6 @@ class _YearViewState extends State<YearView> {
                   ),
                 ),
               ),
-            ),
             ],
           ),
         ),
