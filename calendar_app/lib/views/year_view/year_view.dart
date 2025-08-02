@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:calendar_app/services/auth_service.dart';
 import 'package:calendar_app/services/shared_data_service.dart';
 import 'package:calendar_app/services/shared_assignment_data.dart';
+import 'package:calendar_app/services/shared_data_fix_service.dart';
 import 'package:calendar_app/models/user_tier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -315,8 +316,8 @@ class _YearViewState extends State<YearView> {
 
   Future<void> _loadProfessionSettings() async {
     try {
-      // 🔥 100% SUPABASE STORAGE - Load settings for current week
-      final supabaseData = await SharedDataService.loadProfessionSettings(_currentWeek);
+      // 🔥 SHARED DATA - Use shared profession settings for multi-user sync
+      final supabaseData = await SharedDataFixService.loadSharedProfessionSettings(_currentWeek);
       
       if (supabaseData.isNotEmpty) {
         final dayProfessions = supabaseData['dayProfessions'] as Map<EmployeeRole, bool>?;
@@ -337,16 +338,16 @@ class _YearViewState extends State<YearView> {
           _weekNightShiftRows[_currentWeek] = Map.from(nightRows);
         }
         
-        print('YearView: ✅ Loaded profession settings from Supabase for week $_currentWeek');
+        print('YearView: ✅ Loaded shared profession settings for week $_currentWeek');
       } else {
-        print('YearView: No settings found in Supabase for week $_currentWeek, using defaults');
+        print('YearView: No shared settings found for week $_currentWeek, using defaults');
       }
       
       if (mounted) {
         setState(() {});
       }
     } catch (e) {
-      print('YearView: ❌ Error loading profession settings from Supabase: $e');
+      print('YearView: ❌ Error loading shared profession settings: $e');
     }
   }
 
