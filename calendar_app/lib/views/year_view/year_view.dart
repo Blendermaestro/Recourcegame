@@ -17,6 +17,8 @@ import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
+// 📄 PDF GENERATION IMPORT
+import 'package:calendar_app/services/pdf_calendar_service.dart';
 
 // Platform-specific fullscreen imports
 import 'fullscreen_stub.dart'
@@ -49,7 +51,7 @@ class _YearViewState extends State<YearView> {
   final Set<int> _loadingWeeks = <int>{};
   
   // 📸 SCREENSHOT FUNCTIONALITY
-  final GlobalKey _screenshotKey = GlobalKey();
+  // final GlobalKey _screenshotKey = GlobalKey();
   
   // 🔥 SHARED DATA - Use truly shared data class with year awareness
   Map<String, Employee> get _assignments => SharedAssignmentData.getAssignmentsForYear(_selectedYear);
@@ -57,6 +59,9 @@ class _YearViewState extends State<YearView> {
   Map<int, Map<EmployeeRole, bool>> get _weekNightShiftProfessions => SharedAssignmentData.weekNightShiftProfessions;
   Map<int, Map<EmployeeRole, int>> get _weekDayShiftRows => SharedAssignmentData.weekDayShiftRows;
   Map<int, Map<EmployeeRole, int>> get _weekNightShiftRows => SharedAssignmentData.weekNightShiftRows;
+
+  // 📄 PDF GENERATION STATUS
+  bool _isGeneratingPDF = false;
 
   @override
   void initState() {
@@ -96,39 +101,55 @@ class _YearViewState extends State<YearView> {
     super.dispose();
   }
   
-  // 📸 PLATFORM-AWARE SCREENSHOT METHOD
-  Future<void> _takeScreenshot() async {
+  // 📄 PDF GENERATION METHOD
+  Future<void> _generatePDF() async {
+    if (_isGeneratingPDF) return; // Prevent multiple simultaneous generations
+    
+    setState(() {
+      _isGeneratingPDF = true;
+    });
+    
     try {
-      print('📸 Starting screenshot...');
+      print('📄 Starting PDF generation...');
       
-      if (kIsWeb) {
-        // 🌐 WEB: Use browser's print functionality
-        _webScreenshot();
-      } else {
-        // 📱 MOBILE: Use RepaintBoundary.toImage()
-        await _mobileScreenshot();
-      }
-    } catch (e, stackTrace) {
-      print('Screenshot error: $e');
-      print('Stack trace: $stackTrace');
+      // Show loading message
       if (mounted) {
         ScaffoldMessenger.of(this.context).showSnackBar(
           SnackBar(
-            content: Text('❌ Kuvakaappaus epäonnistui: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('📄 Luodaan PDF:ää viikosta $_currentWeek/$_selectedYear...'),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
-    }
-  }
-  
-  // 🌐 WEB-SPECIFIC SCREENSHOT
-  void _webScreenshot() {
-    try {
-      print('🌐 Web screenshot: Opening print dialog...');
       
-      // For web, show helpful instructions instead of failing
+      // Generate PDF
+      final pdfBytes = await PDFCalendarService.generateWeeklyPDF(
+        weekNumber: _currentWeek,
+        year: _selectedYear,
+        assignments: _assignments,
+      );
+      
+      // Download/share PDF
+      final filename = 'kalenteri_viikko_${_currentWeek}_$_selectedYear.pdf';
+      await PDFCalendarService.downloadPDF(pdfBytes, filename);
+      
+      print('✅ PDF generated successfully! Size: ${pdfBytes.length} bytes');
+      
+      // Show success message
       if (mounted) {
         ScaffoldMessenger.of(this.context).showSnackBar(
           SnackBar(
@@ -136,129 +157,43 @@ class _YearViewState extends State<YearView> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('🌐 Web-selaimessa kuvakaappaus (Viikko $_currentWeek/$_selectedYear)'),
-                Text('💡 Käytä selaimen toimintoja:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                Text('• Ctrl+P → Tallenna PDF:nä', style: TextStyle(fontSize: 11, color: Colors.white60)),
-                Text('• F12 → Kehittäjätyökalut → Screenshot', style: TextStyle(fontSize: 11, color: Colors.white60)),
-                Text('• Selaimen "Tallenna sivu" -toiminto', style: TextStyle(fontSize: 11, color: Colors.white60)),
+                Text('📄 PDF luotu onnistuneesti! (Viikko $_currentWeek/$_selectedYear)'),
+                const Text('💾 PDF ladataan automaattisesti tai avautuu jakovalikko', 
+                     style: TextStyle(fontSize: 12, color: Colors.white70)),
+                Text('📊 Koko: ${(pdfBytes.length / 1024).toStringAsFixed(1)} KB', 
+                     style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                const Text('📋 Sisältää kaikki työvuorot ja lomat', 
+                     style: TextStyle(fontSize: 11, color: Colors.white60)),
               ],
             ),
-            backgroundColor: Colors.blue,
-            duration: const Duration(seconds: 8),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 6),
             action: SnackBarAction(
-              label: 'Ctrl+P',
+              label: 'OK',
               textColor: Colors.white,
-              onPressed: () {
-                // Try to trigger print dialog programmatically
-                try {
-                  // Use platform channel or direct JS if available
-                  if (kIsWeb) {
-                    // This will work if the app has access to window.print
-                    // Note: This might not work in all contexts
-                    // html.window.print(); // Removed to avoid import issues
-                  }
-                } catch (e) {
-                  print('Could not trigger print: $e');
-                }
-              },
+              onPressed: () {},
             ),
           ),
         );
       }
-    } catch (e) {
-      print('Web screenshot error: $e');
+    } catch (e, stackTrace) {
+      print('PDF generation error: $e');
+      print('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(this.context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Web-kuvakaappauksen ohje epäonnistui'),
+          SnackBar(
+            content: Text('❌ PDF:n luominen epäonnistui: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
-    }
-  }
-  
-  // 📱 MOBILE-SPECIFIC SCREENSHOT
-  Future<void> _mobileScreenshot() async {
-    // Check if context exists
-    final context = _screenshotKey.currentContext;
-    if (context == null) {
-      print('❌ Screenshot context is null');
+    } finally {
       if (mounted) {
-        ScaffoldMessenger.of(this.context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Kuvakaappausvirhe: Konteksti puuttuu'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        setState(() {
+          _isGeneratingPDF = false;
+        });
       }
-      return;
-    }
-    
-    print('✅ Context found, getting render object...');
-    final RenderObject? renderObject = context.findRenderObject();
-    if (renderObject == null || renderObject is! RenderRepaintBoundary) {
-      print('❌ Invalid render object: $renderObject');
-      if (mounted) {
-        ScaffoldMessenger.of(this.context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Kuvakaappausvirhe: Render-objekti puuttuu'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-    
-    print('✅ Render boundary found, capturing image...');
-    final RenderRepaintBoundary boundary = renderObject;
-    
-    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
-    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    
-    if (byteData == null) {
-      print('❌ Failed to convert image to bytes');
-      if (mounted) {
-        ScaffoldMessenger.of(this.context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Kuvakaappausvirhe: Kuvan muuntaminen epäonnistui'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-    
-    print('✅ Screenshot captured successfully! Size: ${byteData.lengthInBytes} bytes');
-    
-    // Show success message
-    if (mounted) {
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('📸 Kuvakaappaus onnistui! (Viikko $_currentWeek/$_selectedYear)'),
-              Text('💾 Kuva tallennettu laitteen galleriaan', 
-                   style: TextStyle(fontSize: 12, color: Colors.white70)),
-              Text('📊 Koko: ${(byteData.lengthInBytes / 1024).toStringAsFixed(1)} KB', 
-                   style: TextStyle(fontSize: 11, color: Colors.white60)),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OK',
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
-        ),
-      );
     }
   }
   
@@ -1239,7 +1174,7 @@ class _YearViewState extends State<YearView> {
             // Scrollable content area
             Expanded(
               child: RepaintBoundary(
-                key: _screenshotKey,
+                // key: _screenshotKey, // Removed screenshot key
                 child: Container(
                   color: const Color(0xFFE0FBFC),
                   child: Focus(
@@ -1289,14 +1224,23 @@ class _YearViewState extends State<YearView> {
         ),
       ),
       ),
-      // 📸 SCREENSHOT BUTTON
+      // 📄 PDF GENERATION BUTTON
       floatingActionButton: FloatingActionButton(
-        onPressed: _takeScreenshot,
-        backgroundColor: const Color(0xFF253237),
-        child: const Icon(Icons.camera_alt, color: Colors.white),
-        tooltip: kIsWeb 
-          ? 'Näytä kuvakaappausohjeet (Viikko $_currentWeek)' 
-          : 'Ota kuvakaappaus viikosta $_currentWeek',
+        onPressed: _isGeneratingPDF ? null : _generatePDF,
+        backgroundColor: _isGeneratingPDF ? Colors.grey : const Color(0xFF253237),
+        child: _isGeneratingPDF 
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          : const Icon(Icons.picture_as_pdf, color: Colors.white),
+        tooltip: _isGeneratingPDF 
+          ? 'Luodaan PDF:ää...' 
+          : 'Luo PDF viikosta $_currentWeek',
       ),
     );
   }

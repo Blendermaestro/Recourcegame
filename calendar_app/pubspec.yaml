@@ -46,7 +46,9 @@ dependencies:
   rxdart: ^0.27.7         # Reactive programming & debouncing
   synchronized: ^3.1.0+1  # Thread-safe operations
   
-  # No PDF functionality - removed
+  # 📄 PDF GENERATION
+  pdf: ^3.11.1            # PDF document generation
+  printing: ^5.12.0       # PDF download & printing
 
 dev_dependencies:
   flutter_test:
