@@ -182,7 +182,7 @@ class PDFCalendarService {
     return ordered;
   }
   
-  /// Build custom table that simulates cell merging
+  /// Build custom table that shows repeated names (simpler approach)
   static pw.Widget _buildCustomMergedTable(
     List<String> orderedProfessions,
     Map<String, List<Assignment>> professionAssignments,
@@ -214,7 +214,7 @@ class PDFCalendarService {
       ],
     ));
     
-    // Profession rows with merged cells
+    // Profession rows with repeated names
     for (final profession in orderedProfessions) {
       final assignments = professionAssignments[profession]!;
       rows.addAll(_buildProfessionRowsWithMerging(profession, assignments, dates, year));
@@ -255,41 +255,17 @@ class PDFCalendarService {
     }).toList();
   }
   
-  /// Build day cells with merged cell simulation for consecutive assignments
+  /// Build day cells with proper visual merging (name only once per block)
   static List<pw.Widget> _buildMergedDayCells(List<Assignment> assignments, List<DateTime> dates, int year) {
     final cells = <pw.Widget>[];
-    final mergedCells = _calculateMergedCells(assignments, dates, year);
-    
-    for (int dayIndex = 0; dayIndex < 7; dayIndex++) {
-      final mergedCell = mergedCells[dayIndex];
-      
-      if (mergedCell != null) {
-        if (mergedCell.isStart) {
-          // First cell of merged group - show content
-          cells.add(_buildMergedContentCell(mergedCell.content, mergedCell.bgColor, mergedCell.span));
-        } else {
-          // Continuation cell - show as merged
-          cells.add(_buildMergedContinuationCell(mergedCell.bgColor));
-        }
-      } else {
-        // Empty cell
-        cells.add(_buildTableCell(''));
-      }
-    }
-    
-    return cells;
-  }
-  
-  /// Calculate merged cells for consecutive assignments
-  static Map<int, MergedCellInfo?> _calculateMergedCells(List<Assignment> assignments, List<DateTime> dates, int year) {
-    final mergedCells = <int, MergedCellInfo?>{};
     final processedDays = <int>{};
     
     for (int dayIndex = 0; dayIndex < 7; dayIndex++) {
       if (processedDays.contains(dayIndex)) {
-        continue;
+        continue; // Skip days already processed as part of merged blocks
       }
       
+      // Find assignment for this day
       final dayAssignment = assignments.where((a) => a.dayIndex == dayIndex).firstOrNull;
       
       if (dayAssignment?.employee != null) {
@@ -321,40 +297,43 @@ class PDFCalendarService {
           bgColor = PdfColors.red100;
         }
         
-        // Create merged cell info
-        mergedCells[dayIndex] = MergedCellInfo(
-          content: content,
-          bgColor: bgColor,
-          span: span,
-          isStart: true,
-        );
+        // FIRST cell: show name with right border
+        cells.add(_buildMergedStartCell(content, bgColor, span > 1));
         
-        // Mark continuation cells
+        // CONTINUATION cells: empty with matching background, no left border
         for (int i = 1; i < span; i++) {
-          mergedCells[dayIndex + i] = MergedCellInfo(
-            content: content,
-            bgColor: bgColor,
-            span: span,
-            isStart: false,
-          );
+          cells.add(_buildMergedContinuationCell(bgColor, i == span - 1));
         }
       } else {
-        mergedCells[dayIndex] = null;
+        // Empty cell
+        cells.add(_buildTableCell(''));
       }
       
       processedDays.add(dayIndex);
     }
     
-    return mergedCells;
+    // Ensure we have exactly 7 cells
+    while (cells.length < 7) {
+      cells.add(_buildTableCell(''));
+    }
+    
+    return cells.take(7).toList();
   }
   
-  /// Build merged content cell (first cell of a span)
-  static pw.Widget _buildMergedContentCell(String content, PdfColor bgColor, int span) {
+  /// Build first cell of a merged group
+  static pw.Widget _buildMergedStartCell(String content, PdfColor bgColor, bool hasRightMerge) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(2),
       decoration: pw.BoxDecoration(
         color: bgColor,
-        border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+        border: pw.Border(
+          top: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
+          bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
+          left: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
+          right: hasRightMerge 
+              ? pw.BorderSide.none // No right border if merging continues
+              : pw.BorderSide(color: PdfColors.grey600, width: 0.4),
+        ),
       ),
       child: pw.Text(
         content,
@@ -364,8 +343,8 @@ class PDFCalendarService {
     );
   }
   
-  /// Build merged continuation cell (subsequent cells of a span)
-  static pw.Widget _buildMergedContinuationCell(PdfColor bgColor) {
+  /// Build continuation cell of a merged group
+  static pw.Widget _buildMergedContinuationCell(PdfColor bgColor, bool isLast) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(2),
       decoration: pw.BoxDecoration(
@@ -373,11 +352,13 @@ class PDFCalendarService {
         border: pw.Border(
           top: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
           bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          right: pw.BorderSide(color: PdfColors.grey600, width: 0.4),
-          left: pw.BorderSide.none, // No left border to create merged appearance
+          left: pw.BorderSide.none, // No left border to create merged look
+          right: isLast 
+              ? pw.BorderSide(color: PdfColors.grey600, width: 0.4) // Right border on last cell
+              : pw.BorderSide.none, // No right border if merging continues
         ),
       ),
-      child: pw.Text('', style: const pw.TextStyle(fontSize: 6)),
+      child: pw.Text('', style: const pw.TextStyle(fontSize: 6)), // EMPTY content
     );
   }
   
@@ -593,21 +574,6 @@ class Assignment {
     required this.profession,
     required this.professionRow,
     this.employee,
-  });
-}
-
-/// Merged cell information for PDF table simulation
-class MergedCellInfo {
-  final String content;
-  final PdfColor bgColor;
-  final int span;
-  final bool isStart;
-  
-  MergedCellInfo({
-    required this.content,
-    required this.bgColor,
-    required this.span,
-    required this.isStart,
   });
 }
 
