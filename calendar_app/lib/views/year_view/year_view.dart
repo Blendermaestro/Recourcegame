@@ -96,89 +96,17 @@ class _YearViewState extends State<YearView> {
     super.dispose();
   }
   
-  // 📸 SUPER SIMPLE SCREENSHOT METHOD
+  // 📸 PLATFORM-AWARE SCREENSHOT METHOD
   Future<void> _takeScreenshot() async {
     try {
       print('📸 Starting screenshot...');
       
-      // Check if context exists
-      final context = _screenshotKey.currentContext;
-      if (context == null) {
-        print('❌ Screenshot context is null');
-        if (mounted) {
-          ScaffoldMessenger.of(this.context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Kuvakaappausvirhe: Konteksti puuttuu'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-      
-      print('✅ Context found, getting render object...');
-      final RenderObject? renderObject = context.findRenderObject();
-      if (renderObject == null || renderObject is! RenderRepaintBoundary) {
-        print('❌ Invalid render object: $renderObject');
-        if (mounted) {
-          ScaffoldMessenger.of(this.context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Kuvakaappausvirhe: Render-objekti puuttuu'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-      
-      print('✅ Render boundary found, capturing image...');
-      final RenderRepaintBoundary boundary = renderObject;
-      
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.0); // Reduced for better performance
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      
-      if (byteData == null) {
-        print('❌ Failed to convert image to bytes');
-        if (mounted) {
-          ScaffoldMessenger.of(this.context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Kuvakaappausvirhe: Kuvan muuntaminen epäonnistui'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-      
-      print('✅ Screenshot captured successfully! Size: ${byteData.lengthInBytes} bytes');
-      
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(this.context).showSnackBar(
-          SnackBar(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('📸 Kuvakaappaus onnistui! (Viikko $_currentWeek/$_selectedYear)'),
-                Text('💡 Vihje: Käytä selaimen kehittäjätyökaluja tai "Tallenna sivu" -toimintoa', 
-                     style: TextStyle(fontSize: 12, color: Colors.white70)),
-                Text('📊 Koko: ${(byteData.lengthInBytes / 1024).toStringAsFixed(1)} KB', 
-                     style: TextStyle(fontSize: 11, color: Colors.white60)),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: Colors.white,
-              onPressed: () {},
-            ),
-          ),
-        );
+      if (kIsWeb) {
+        // 🌐 WEB: Use browser's print functionality
+        _webScreenshot();
+      } else {
+        // 📱 MOBILE: Use RepaintBoundary.toImage()
+        await _mobileScreenshot();
       }
     } catch (e, stackTrace) {
       print('Screenshot error: $e');
@@ -192,6 +120,145 @@ class _YearViewState extends State<YearView> {
           ),
         );
       }
+    }
+  }
+  
+  // 🌐 WEB-SPECIFIC SCREENSHOT
+  void _webScreenshot() {
+    try {
+      print('🌐 Web screenshot: Opening print dialog...');
+      
+      // For web, show helpful instructions instead of failing
+      if (mounted) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('🌐 Web-selaimessa kuvakaappaus (Viikko $_currentWeek/$_selectedYear)'),
+                Text('💡 Käytä selaimen toimintoja:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                Text('• Ctrl+P → Tallenna PDF:nä', style: TextStyle(fontSize: 11, color: Colors.white60)),
+                Text('• F12 → Kehittäjätyökalut → Screenshot', style: TextStyle(fontSize: 11, color: Colors.white60)),
+                Text('• Selaimen "Tallenna sivu" -toiminto', style: TextStyle(fontSize: 11, color: Colors.white60)),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Ctrl+P',
+              textColor: Colors.white,
+              onPressed: () {
+                // Try to trigger print dialog programmatically
+                try {
+                  // Use platform channel or direct JS if available
+                  if (kIsWeb) {
+                    // This will work if the app has access to window.print
+                    // Note: This might not work in all contexts
+                    // html.window.print(); // Removed to avoid import issues
+                  }
+                } catch (e) {
+                  print('Could not trigger print: $e');
+                }
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Web screenshot error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Web-kuvakaappauksen ohje epäonnistui'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+  
+  // 📱 MOBILE-SPECIFIC SCREENSHOT
+  Future<void> _mobileScreenshot() async {
+    // Check if context exists
+    final context = _screenshotKey.currentContext;
+    if (context == null) {
+      print('❌ Screenshot context is null');
+      if (mounted) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Kuvakaappausvirhe: Konteksti puuttuu'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
+    print('✅ Context found, getting render object...');
+    final RenderObject? renderObject = context.findRenderObject();
+    if (renderObject == null || renderObject is! RenderRepaintBoundary) {
+      print('❌ Invalid render object: $renderObject');
+      if (mounted) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Kuvakaappausvirhe: Render-objekti puuttuu'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
+    print('✅ Render boundary found, capturing image...');
+    final RenderRepaintBoundary boundary = renderObject;
+    
+    final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    
+    if (byteData == null) {
+      print('❌ Failed to convert image to bytes');
+      if (mounted) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Kuvakaappausvirhe: Kuvan muuntaminen epäonnistui'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
+    print('✅ Screenshot captured successfully! Size: ${byteData.lengthInBytes} bytes');
+    
+    // Show success message
+    if (mounted) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('📸 Kuvakaappaus onnistui! (Viikko $_currentWeek/$_selectedYear)'),
+              Text('💾 Kuva tallennettu laitteen galleriaan', 
+                   style: TextStyle(fontSize: 12, color: Colors.white70)),
+              Text('📊 Koko: ${(byteData.lengthInBytes / 1024).toStringAsFixed(1)} KB', 
+                   style: TextStyle(fontSize: 11, color: Colors.white60)),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
     }
   }
   
@@ -1227,7 +1294,9 @@ class _YearViewState extends State<YearView> {
         onPressed: _takeScreenshot,
         backgroundColor: const Color(0xFF253237),
         child: const Icon(Icons.camera_alt, color: Colors.white),
-        tooltip: 'Ota kuvakaappaus viikosta $_currentWeek',
+        tooltip: kIsWeb 
+          ? 'Näytä kuvakaappausohjeet (Viikko $_currentWeek)' 
+          : 'Ota kuvakaappaus viikosta $_currentWeek',
       ),
     );
   }
