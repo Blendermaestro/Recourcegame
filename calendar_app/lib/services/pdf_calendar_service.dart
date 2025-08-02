@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart'; // Added for Color class
 import '../models/employee.dart';
 import '../data/vacation_manager.dart';
 import 'shared_assignment_data.dart';
@@ -189,9 +190,9 @@ class PDFCalendarService {
     List<DateTime> dates,
     int year,
   ) {
-    final cellWidth = 70.0; // Fixed width for each day column
-    final cellHeight = 16.0; // Fixed height for each row
-    final professionWidth = 80.0; // Width for profession column
+    final cellWidth = 68.0; // Slightly smaller to prevent cropping
+    final cellHeight = 15.0; // Compact height
+    final professionWidth = 85.0; // Wider for profession names with numbers
     
     return pw.Column(
       children: [
@@ -236,7 +237,7 @@ class PDFCalendarService {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: PdfColors.grey300,
-        border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+        border: pw.Border.all(color: PdfColors.grey600, width: 0.3),
       ),
       padding: const pw.EdgeInsets.all(2),
       child: pw.Text(
@@ -282,7 +283,7 @@ class PDFCalendarService {
           cellWidth,
           cellHeight,
           professionWidth,
-          rowIndex == 0, // Show full name only for first row
+          row, // Pass the actual row number
         ));
       }
     }
@@ -299,7 +300,7 @@ class PDFCalendarService {
     double cellWidth,
     double cellHeight,
     double professionWidth,
-    bool isFirstRow,
+    int professionRow,
   ) {
     return pw.Container(
       height: cellHeight,
@@ -313,13 +314,13 @@ class PDFCalendarService {
                 height: cellHeight,
                 decoration: pw.BoxDecoration(
                   color: PdfColors.grey300,
-                  border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+                  border: pw.Border.all(color: PdfColors.grey600, width: 0.3),
                 ),
                 padding: const pw.EdgeInsets.all(2),
                 child: pw.Text(
-                  isFirstRow ? _getProfessionDisplayNameClean(profession) : '', // Only show name in first row
+                  _getProfessionDisplayNameWithNumbers(profession, professionRow), // Keep numbers!
                   style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
-                  textAlign: pw.TextAlign.center,
+                  textAlign: pw.TextAlign.left, // LEFT align profession names
                 ),
               ),
               ...List.generate(7, (index) => 
@@ -328,22 +329,22 @@ class PDFCalendarService {
                   height: cellHeight,
                   decoration: pw.BoxDecoration(
                     color: PdfColors.white,
-                    border: pw.Border.all(color: PdfColors.grey600, width: 0.4),
+                    border: pw.Border.all(color: PdfColors.grey600, width: 0.3),
                   ),
                 )
               ),
             ],
           ),
           
-          // Spanning assignment blocks
-          ..._buildSpanningBlocks(assignments, dates, year, cellWidth, cellHeight, professionWidth),
+          // Spanning assignment blocks with proper boundaries
+          ..._buildSpanningBlocksWithBoundaries(assignments, dates, year, cellWidth, cellHeight, professionWidth),
         ],
       ),
     );
   }
   
-  /// Build real spanning blocks for assignments
-  static List<pw.Widget> _buildSpanningBlocks(
+  /// Build real spanning blocks with proper boundaries to prevent cropping
+  static List<pw.Widget> _buildSpanningBlocksWithBoundaries(
     List<Assignment> assignments,
     List<DateTime> dates,
     int year,
@@ -381,32 +382,36 @@ class PDFCalendarService {
         );
         
         String content = employee.name;
-        PdfColor bgColor = _getEmployeeCategoryColor(employee.category);
+        PdfColor bgColor = _getRealAppCategoryColor(employee.category); // Use REAL app colors!
         
         if (hasVacation) {
           content += ' (LOMA)';
           bgColor = PdfColors.red100;
         }
         
-        // Create REAL spanning block
+        // Create REAL spanning block with proper boundaries
+        final blockWidth = (cellWidth * span) - 4; // Leave margin to prevent cropping
+        final leftPosition = professionWidth + (dayIndex * cellWidth) + 2; // Small margin
+        
         blocks.add(
           pw.Positioned(
-            left: professionWidth + (dayIndex * cellWidth),
-            top: 0,
+            left: leftPosition,
+            top: 2, // Small top margin
             child: pw.Container(
-              width: cellWidth * span, // REAL spanning width!
-              height: cellHeight,
+              width: blockWidth,
+              height: cellHeight - 4, // Leave margin to prevent cropping
               decoration: pw.BoxDecoration(
                 color: bgColor,
-                border: pw.Border.all(color: PdfColors.grey800, width: 0.8),
-                borderRadius: pw.BorderRadius.circular(2),
+                border: pw.Border.all(color: PdfColors.grey800, width: 0.5),
+                borderRadius: pw.BorderRadius.circular(3), // Proper round corners that fit
               ),
-              padding: const pw.EdgeInsets.all(2),
-              child: pw.Center(
+              padding: const pw.EdgeInsets.all(3),
+              child: pw.Align(
+                alignment: pw.Alignment.centerLeft, // LEFT align names!
                 child: pw.Text(
                   content,
                   style: const pw.TextStyle(fontSize: 6),
-                  textAlign: pw.TextAlign.center,
+                  textAlign: pw.TextAlign.left, // LEFT align text
                   maxLines: 1,
                 ),
               ),
@@ -421,21 +426,39 @@ class PDFCalendarService {
     return blocks;
   }
   
-  /// Get clean profession display name (no numbers)
-  static String _getProfessionDisplayNameClean(String profession) {
+  /// Get profession display name WITH numbers (VARU1, VARU2, PASTA1, PASTA2)
+  static String _getProfessionDisplayNameWithNumbers(String profession, int professionRow) {
     try {
       final role = EmployeeRole.values.byName(profession);
+      
+      // Use the EXACT display name from SharedAssignmentData (includes numbers!)
       final displayName = SharedAssignmentData.getRoleDisplayName(role);
       
-      // Remove numbers from profession names (ICT2 -> ICT)
-      if (displayName.contains(RegExp(r'\d'))) {
-        return displayName.replaceAll(RegExp(r'\d+'), '');
+      // For roles with multiple rows, show them separately
+      if (professionRow > 0) {
+        return '$displayName${professionRow + 1}'; // Show VARU1, VARU2, etc.
       }
       
       return displayName;
     } catch (e) {
       return profession.toUpperCase();
     }
+  }
+  
+  /// Get REAL app category colors using SharedAssignmentData
+  static PdfColor _getRealAppCategoryColor(EmployeeCategory category) {
+    // Get the actual color from SharedAssignmentData
+    final flutterColor = SharedAssignmentData.getCategoryColor(category);
+    return _convertColorToPdfColor(flutterColor);
+  }
+  
+  /// Convert Flutter Color to PdfColor
+  static PdfColor _convertColorToPdfColor(Color flutterColor) {
+    return PdfColor(
+      flutterColor.red / 255.0,
+      flutterColor.green / 255.0,
+      flutterColor.blue / 255.0,
+    );
   }
   
   /// Build vacation section with proper Finnish characters and no emojis
@@ -592,17 +615,6 @@ class PDFCalendarService {
   /// Format date short
   static String _formatDateShort(DateTime date) {
     return '${date.day}.${date.month}';
-  }
-  
-  /// Get employee category color
-  static PdfColor _getEmployeeCategoryColor(EmployeeCategory category) {
-    switch (category) {
-      case EmployeeCategory.ab: return PdfColors.blue100;
-      case EmployeeCategory.cd: return PdfColors.green100;
-      case EmployeeCategory.huolto: return PdfColors.orange100;
-      case EmployeeCategory.sijainen: return PdfColors.purple100;
-      case EmployeeCategory.kommentit: return PdfColors.grey100;
-    }
   }
 }
 
